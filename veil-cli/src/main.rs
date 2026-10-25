@@ -7,15 +7,15 @@ use harden::Locked;
 use randomness::{OsEntropy, Randomness, read_seed, rolls_from_text};
 use std::fmt::Display;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use veil_core::{
     AuthFailures, COMPOSED_KEY_LEN, Entropy, Error, FACTOR_LEN, HashKeys, KeycardView, MAX_FILE,
-    MAX_SHARES, PAYLOAD_LEN, Secret, SetId, ShareView, WORD_COUNT, check_params, keycard_len,
-    mask_len, share_len,
+    MAX_SHARES, Mix, PAYLOAD_LEN, Ripple, Secret, SetId, ShareView, WORD_COUNT, check_params,
+    keycard_len, mask_len, share_len,
 };
 use zeroize::Zeroize;
 
@@ -30,6 +30,7 @@ usage:
   veil apply <share> <mask> [-o <dir>]
   veil seed [-o <file>]
   veil compose [-k <threshold>] [-n <shares>] [-o <dir>] [--key <file>] [randomness]
+  veil forge [-k <threshold>] [-n <shares>] [-o <dir>] [--no-ripple] [randomness]
   veil recover <share>... -o <file | ->
 
 split    writes n share files; any k of them rebuild the file, fewer reveal nothing
@@ -53,6 +54,8 @@ seed     turns 272 rolls of a fair die, typed on stdin, into an extractor seed.
          the seed is public: it only has to come from real dice
 compose  protects a 32-byte key with shares AND 27 memorized words. the shares, even all
          together, reveal nothing without the words. without --key, makes a new key
+forge    like compose, but the key is born split: it is never computed until recover,
+         and your keystrokes ripple into the randomness it is made from
 recover  rebuilds a composed key from enough shares plus your words
 
 defaults: -k 3 -n 5 -o .    largest file: 10240 bytes";
@@ -88,6 +91,7 @@ fn main() -> ExitCode {
         Some("apply") => apply(&args[1..]),
         Some("seed") => seed(&args[1..]),
         Some("compose") => compose(&args[1..]),
+        Some("forge") => forge(&args[1..]),
         Some("recover") => recover(&args[1..]),
         Some("help" | "-h" | "--help") => {
             println!("{USAGE}");
@@ -119,6 +123,7 @@ struct Args {
     min_entropy: Option<String>,
     seed: Option<String>,
     key: Option<String>,
+    no_ripple: bool,
 }
 
 fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
@@ -131,6 +136,10 @@ fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
                 return Err(usage(format!("unknown option '{flag}'")));
             }
             parsed.positional.push(arg.clone());
+            continue;
+        }
+        if flag == "--no-ripple" {
+            parsed.no_ripple = true;
             continue;
         }
         let value = iter
@@ -457,6 +466,85 @@ fn compose(args: &[String]) -> Result<()> {
     );
     println!("{}", rng.summary());
     Ok(())
+}
+
+fn forge(args: &[String]) -> Result<()> {
+    let args = parse_args(
+        args,
+        &[
+            "-k",
+            "-n",
+            "-o",
+            "--no-ripple",
+            "--entropy",
+            "--min-entropy",
+            "--seed",
+        ],
+    )?;
+    if !args.positional.is_empty() {
+        return Err(usage("forge takes no file: the key is made inside veil"));
+    }
+    let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
+    check_params(k, n).map_err(usage)?;
+    let dir = out_dir(&args);
+    let mut rng = randomness(&args)?;
+
+    let mut ripple = Ripple::new();
+    if !args.no_ripple {
+        if io::stdin().is_terminal() {
+            ripple_keystrokes(&mut ripple)?;
+        } else {
+            println!("no keyboard attached: forging without the keystroke ripple.");
+        }
+    }
+    let mut payload = Locked::new(Box::new([0u8; PAYLOAD_LEN])).map_err(cannot_lock)?;
+    let mut words = Locked::new(Box::new([0u8; FACTOR_LEN])).map_err(cannot_lock)?;
+    veil_core::forge(&mut Mix(&mut rng, ripple), &mut payload, &mut words, None).map_err(fatal)?;
+
+    let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
+    secret.load(&payload[..]).map_err(fatal)?;
+    write_split(&secret, k, n, &mut rng, &dir)?;
+    println!();
+    println!("your {WORD_COUNT} words, the second factor:");
+    print_words(&words);
+    println!("without these words the shares are useless, to an attacker and to you. memorize");
+    println!(
+        "them, or write them down and keep them apart from every share. veil never stores them."
+    );
+    println!();
+    println!("the key was never computed. it does not exist anywhere yet: not in memory, not on");
+    println!("disk. it first comes into being when you run veil recover.");
+    println!("{}", rng.summary());
+    Ok(())
+}
+
+/// Stirs the ripple pool with keystrokes typed now: each one's timing and value.
+fn ripple_keystrokes(ripple: &mut Ripple) -> Result<()> {
+    const KEYS: usize = 64;
+    eprintln!(
+        "type anything, {KEYS} keys. each keystroke ripples the pool the key is forged from."
+    );
+    let typed = harden::keystrokes(KEYS, |n, nanos, key| {
+        let mut event = [0u8; 9];
+        event[..8].copy_from_slice(&nanos.to_le_bytes());
+        event[8] = key;
+        ripple.stir(&event);
+        event.zeroize();
+        let filled = n * 32 / KEYS;
+        eprint!(
+            "\r  ripple {}{} {n}/{KEYS}",
+            "█".repeat(filled),
+            "░".repeat(32 - filled)
+        );
+    });
+    eprintln!();
+    match typed {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::Interrupted => {
+            Err(fatal("cancelled; nothing was written"))
+        }
+        Err(e) => Err(fatal(format!("keyboard: {e}"))),
+    }
 }
 
 fn recover(args: &[String]) -> Result<()> {

@@ -159,6 +159,65 @@ impl<A: Entropy, B: Entropy> Entropy for Mix<A, B> {
     }
 }
 
+/// Bytes a ripple pool holds: enough to stir every random byte of a forged key's words, shares'
+/// part and check hash key.
+pub const RIPPLE_LEN: usize = 88;
+
+/// A pool that every event reconfigures. The event is XORed in, then a running XOR carries the
+/// change through every later byte and the pool rotates by one. Each step can be undone, so no
+/// event's randomness is ever lost.
+///
+/// As an [`Entropy`] source it gives its pool once and zeros after that, so it only makes sense
+/// mixed into a real source with [`Mix`]: there it can add randomness and never take any away.
+pub struct Ripple {
+    pool: [u8; RIPPLE_LEN],
+    at: usize,
+    drawn: usize,
+}
+
+impl Ripple {
+    pub const fn new() -> Self {
+        Self {
+            pool: [0; RIPPLE_LEN],
+            at: 0,
+            drawn: 0,
+        }
+    }
+
+    pub fn stir(&mut self, event: &[u8]) {
+        for &byte in event {
+            self.pool[self.at] ^= byte;
+            self.at = (self.at + 1) % RIPPLE_LEN;
+        }
+        for i in 1..RIPPLE_LEN {
+            self.pool[i] ^= self.pool[i - 1];
+        }
+        self.pool.rotate_left(1);
+    }
+}
+
+impl Default for Ripple {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Entropy for Ripple {
+    fn fill(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+        for byte in buf {
+            *byte = self.pool.get_mut(self.drawn).map_or(0, core::mem::take);
+            self.drawn = self.drawn.saturating_add(1);
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Ripple {
+    fn drop(&mut self) {
+        self.pool.zeroize();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +271,48 @@ mod tests {
             buf.fill(0);
             Ok(())
         }
+    }
+
+    #[test]
+    fn a_keystroke_ripples_through_every_later_byte() {
+        let (mut a, mut b) = (Ripple::new(), Ripple::new());
+        a.stir(&[0x11; 30]);
+        b.stir(&[0x11; 30]);
+        a.stir(&[7]);
+        b.stir(&[8]);
+        let differing = a.pool.iter().zip(&b.pool).filter(|(x, y)| x != y).count();
+        assert_eq!(differing, RIPPLE_LEN - 30);
+    }
+
+    /// Rippling never loses randomness: every stir can be undone exactly.
+    #[test]
+    fn stirring_can_be_undone() {
+        let mut ripple = Ripple::new();
+        ripple.stir(b"earlier keystrokes");
+        let (before, at) = (ripple.pool, ripple.at);
+        let event = [0x5a, 0x00, 0xff, 0x13];
+        ripple.stir(&event);
+        let mut undone = ripple.pool;
+        undone.rotate_right(1);
+        for i in (1..RIPPLE_LEN).rev() {
+            undone[i] ^= undone[i - 1];
+        }
+        for (k, &byte) in event.iter().enumerate() {
+            undone[(at + k) % RIPPLE_LEN] ^= byte;
+        }
+        assert_eq!(undone, before);
+    }
+
+    #[test]
+    fn ripple_gives_its_pool_once_then_nothing() {
+        let mut ripple = Ripple::new();
+        ripple.stir(b"typed");
+        let pool = ripple.pool;
+        let mut out = [0u8; RIPPLE_LEN + 10];
+        ripple.fill(&mut out).unwrap();
+        assert_eq!(out[..RIPPLE_LEN], pool[..]);
+        assert!(out[RIPPLE_LEN..].iter().all(|&b| b == 0));
+        assert!(ripple.pool.iter().all(|&b| b == 0), "drawn bytes are wiped");
     }
 
     #[test]

@@ -90,3 +90,48 @@ pub fn read_secret() -> io::Result<zeroize::Zeroizing<String>> {
     eprintln!();
     result.map(|_| text)
 }
+
+/// Reads up to `count` keystrokes from a terminal, without echo or line buffering, and passes each
+/// to `on_key` with its number, the nanoseconds since the previous key, and its byte. Returns false
+/// at once if stdin is not a terminal. Ctrl-C cancels with an `Interrupted` error.
+pub fn keystrokes(count: usize, mut on_key: impl FnMut(usize, u64, u8)) -> io::Result<bool> {
+    use std::io::Read;
+    use std::time::Instant;
+    // SAFETY: termios is plain data; tcgetattr only writes the struct it is given.
+    let mut saved: libc::termios = unsafe { std::mem::zeroed() };
+    if unsafe { libc::tcgetattr(libc::STDIN_FILENO, &mut saved) } != 0 {
+        return Ok(false);
+    }
+    let mut raw = saved;
+    raw.c_lflag &= !(libc::ECHO | libc::ICANON | libc::ISIG);
+    raw.c_cc[libc::VMIN] = 1;
+    raw.c_cc[libc::VTIME] = 0;
+    // SAFETY: tcsetattr only reads the struct it is given.
+    check(unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw) })?;
+    let mut result = Ok(true);
+    let mut byte = [0u8; 1];
+    let mut last = Instant::now();
+    let mut stdin = io::stdin().lock();
+    for n in 1..=count {
+        match stdin.read(&mut byte) {
+            Ok(1) if byte[0] == 3 => {
+                result = Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+                break;
+            }
+            Ok(1) => {
+                let now = Instant::now();
+                on_key(n, now.duration_since(last).as_nanos() as u64, byte[0]);
+                last = now;
+            }
+            Ok(_) => break,
+            Err(e) => {
+                result = Err(e);
+                break;
+            }
+        }
+    }
+    byte.zeroize();
+    // SAFETY: as above, restoring the settings saved before.
+    unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &saved) };
+    result
+}

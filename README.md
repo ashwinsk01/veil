@@ -41,6 +41,20 @@ $B compose --key my.key -o shares/          # or protect an existing 32-byte key
 $B recover shares/*-1of5.veil shares/*-3of5.veil shares/*-5of5.veil -o my.key   # asks for the words
 ```
 
+`forge` goes a step further: the key is **born split**. Veil draws the shares' part and your words
+independently at random, so the key is only ever *defined*, as their XOR, and nothing computes it
+until `recover`. No key file is written, because there is no key yet. At a keyboard, your keystrokes
+(their timing and value) ripple into the randomness it's made from. They're mixed in with XOR, so
+they can only add randomness.
+
+```sh
+$B forge -o shares/          # type 64 keys; 5 shares and 27 words come out, the key does not
+```
+
+The forging machine still sees both parts for a moment, since your words have to be shown to you,
+so the key is computable there, just never computed. Making even that impossible needs the shares
+to be born on separate devices.
+
 - **One check, at the end.** A wrong word, a wrong share or a share from another set all fail the
   same way: "the shares and the words do not combine". Nothing says which factor was wrong.
 - **Typos are caught first** by a checksum inside the words, which reveals nothing about the key.
@@ -96,6 +110,7 @@ pipe or capture file. Never feed it the same capture twice.
 | Old and new shares don't combine | Each refresh puts the shares on a fresh random curve. Checked exhaustively for one old plus one new share at *k* = 2 |
 | Composed keys need shares and words together | For any key you pick, some set of words would open the same shares to it, so the shares say nothing about which key it is. Tested constructively |
 | The device factor survives noise | The Golay code's distance and its correction of every pattern of up to 3 errors are checked exhaustively. On simulated chips, the factor was rebuilt 200/200 times at the enrollment temperature and 197/200 at +20 °C, and never by another chip (0/90) |
+| A forged key is never computed | By construction: `forge` draws both parts at random and computes the check term by term, using POLYVAL's linearity. Recovery lands exactly on their XOR, which also proves the check right |
 | Field arithmetic is correct | All 65,536 products checked against an independent reference |
 | Secrets stay out of swap and crash dumps | Memory pinned with `mlock` and zeroed after use, core dumps disabled, debugger attachment blocked |
 | Randomness is uniform | With `--entropy` and a dice seed, no computational assumption remains: the output is within a stated distance of uniform. The extractor is checked exhaustively for the universal property the proof needs, and the health test cutoffs match NIST's published table |

@@ -103,6 +103,12 @@ read as 27 indices of 11 bits each into the BIP-39 English word list.
 **Recovery.** XOR the payload's *C* field with *X*w (and *X*d). Accept the first 32 bytes as *K* only
 if the check matches, compared in constant time. Every wrong factor fails the same way.
 
+**Forging.** A forged key is never computed. Draw the payload's 36-byte factor field *X*s and *X*w
+at random; *C* = *X*s ⊕ *X*w is only implied. The check is the first 4 bytes of
+POLYVAL(*h*, *X*s[0..32] ‖ *len*) ⊕ POLYVAL(*h*, *X*w[0..32] ‖ 0¹⁶), XORed with *X*s[32..36] and
+*X*w[32..36]. By linearity it equals the check of *C*, so recovery treats forged and composed keys
+alike.
+
 ## Device factor
 
 A device turns a noisy physical response *w* of 504·*c* bits into a 36-byte factor. Its public

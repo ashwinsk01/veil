@@ -24,9 +24,11 @@ use zeroize::Zeroize;
 
 pub use compose::{
     COMPOSE_MAGIC, COMPOSED_KEY_LEN, FACTOR_LEN, PAYLOAD_LEN, WORD_COUNT, compose, factor_to_words,
-    is_composed, recover, word, words_to_factor,
+    forge, is_composed, recover, word, words_to_factor,
 };
-pub use entropy::{APT_WINDOW, Conditioned, HealthTests, Mix, RawSource, STARTUP_SAMPLES};
+pub use entropy::{
+    APT_WINDOW, Conditioned, HealthTests, Mix, RIPPLE_LEN, RawSource, Ripple, STARTUP_SAMPLES,
+};
 pub use extract::{DICE_ROLLS, MAX_OUTPUT, RAW_BLOCK, SEED_LEN, Toeplitz, seed_from_dice};
 pub use format::{
     HEADER_LEN, KEY_LEN, KEYCARD_MAGIC, KeycardView, MAGIC, MASK_MAGIC, SetId, ShareView, TAG_LEN,
@@ -47,6 +49,12 @@ pub const MAX_SHARES: usize = 16;
 /// A source of uniformly random bytes. Every guarantee in this crate rests on it.
 pub trait Entropy {
     fn fill(&mut self, buf: &mut [u8]) -> Result<(), Error>;
+}
+
+impl<E: Entropy + ?Sized> Entropy for &mut E {
+    fn fill(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+        (**self).fill(buf)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

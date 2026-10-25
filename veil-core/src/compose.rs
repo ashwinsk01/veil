@@ -73,6 +73,43 @@ pub fn compose<E: Entropy + ?Sized>(
     Ok(())
 }
 
+/// Forges a composed key that is never computed. The shares' part and the words' factor are drawn
+/// independently at random, and the key is whatever their XOR is. The joint check is linear in the
+/// key, so each part contributes to it on its own and the key is never assembled, not even for
+/// that. The key first exists when [`recover`] rebuilds it.
+pub fn forge<E: Entropy + ?Sized>(
+    rng: &mut E,
+    payload: &mut [u8; PAYLOAD_LEN],
+    words: &mut [u8; FACTOR_LEN],
+    device: Option<&[u8; FACTOR_LEN]>,
+) -> Result<(), Error> {
+    rng.fill(words)?;
+    payload[..4].copy_from_slice(&COMPOSE_MAGIC);
+    payload[4] = COMPOSE_VERSION;
+    payload[5] = FACTOR_WORDS | if device.is_some() { FACTOR_DEVICE } else { 0 };
+    rng.fill(&mut payload[SHARES_PART])?;
+    let mut hash_key = [0u8; 2 * HASH_KEY_LEN];
+    rng.fill(&mut hash_key[..HASH_KEY_LEN])?;
+    payload[HASH_KEY].copy_from_slice(&hash_key[..HASH_KEY_LEN]);
+
+    // POLYVAL_h(K ‖ len) = POLYVAL_h(shares' part ‖ len) ⊕ POLYVAL_h(words ‖ 0) ⊕ ..., and the pad
+    // is the XOR of each part's last 4 bytes, so the check never needs K itself.
+    let others = [Some(&*words), device];
+    let shares_part = &payload[SHARES_PART];
+    let mut hash = Zeroizing::new(mac::tag(&hash_key, &shares_part[..COMPOSED_KEY_LEN]));
+    for part in others.iter().flatten() {
+        let term = mac::tag_delta(&hash_key[..HASH_KEY_LEN], &part[..COMPOSED_KEY_LEN]);
+        mac::xor_into(&mut hash[..], &term);
+    }
+    let mut check = [hash[0], hash[1], hash[2], hash[3]];
+    mac::xor_into(&mut check, &shares_part[COMPOSED_KEY_LEN..]);
+    for part in others.iter().flatten() {
+        mac::xor_into(&mut check, &part[COMPOSED_KEY_LEN..]);
+    }
+    payload[CHECK].copy_from_slice(&check);
+    Ok(())
+}
+
 /// Whether recovered share data holds a composition rather than a plain file.
 pub fn is_composed(payload: &[u8]) -> bool {
     payload.len() == PAYLOAD_LEN && payload[..4] == COMPOSE_MAGIC
@@ -381,6 +418,83 @@ mod tests {
             recover(&plain, &plain_words, Some(&device), &mut out),
             Err(Error::BadParams)
         );
+    }
+
+    fn forged(
+        seed: u64,
+        device: Option<&[u8; FACTOR_LEN]>,
+    ) -> ([u8; PAYLOAD_LEN], [u8; FACTOR_LEN]) {
+        let (mut payload, mut words) = ([0u8; PAYLOAD_LEN], [0u8; FACTOR_LEN]);
+        forge(&mut TestRng(seed), &mut payload, &mut words, device).unwrap();
+        (payload, words)
+    }
+
+    /// The forged key was never computed, yet it is well defined: the shares' part XOR the words.
+    /// Recovery reaching exactly that value also proves the term-by-term check is right.
+    #[test]
+    fn forged_key_is_the_xor_of_its_parts() {
+        for seed in 20..30 {
+            let (payload, words) = forged(seed, None);
+            let mut out = [0u8; 32];
+            recover(&payload, &words, None, &mut out).unwrap();
+            let implied: [u8; 32] =
+                core::array::from_fn(|i| payload[SHARES_PART.start + i] ^ words[i]);
+            assert_eq!(out, implied);
+        }
+    }
+
+    #[test]
+    fn forged_keys_fail_like_composed_ones() {
+        let (payload, words) = forged(31, None);
+        let (_, other_words) = forged(32, None);
+        let mut out = [0u8; 32];
+        recover(&payload, &words, None, &mut out).unwrap();
+        assert_eq!(
+            recover(&payload, &other_words, None, &mut out),
+            Err(Error::FactorsDontCombine)
+        );
+
+        let mut device = [0u8; FACTOR_LEN];
+        TestRng(33).fill(&mut device).unwrap();
+        let (payload, words) = forged(34, Some(&device));
+        recover(&payload, &words, Some(&device), &mut out).unwrap();
+        assert_eq!(
+            recover(&payload, &words, None, &mut out),
+            Err(Error::DeviceRequired)
+        );
+        let mut wrong = device;
+        wrong[31] ^= 0x40;
+        assert_eq!(
+            recover(&payload, &words, Some(&wrong), &mut out),
+            Err(Error::FactorsDontCombine)
+        );
+    }
+
+    #[test]
+    fn keystrokes_change_the_forged_key() {
+        use crate::{Mix, Ripple};
+        let mut ripple = Ripple::new();
+        ripple.stir(b"keys typed while forging");
+        let (mut quiet_payload, mut quiet_words) = ([0u8; PAYLOAD_LEN], [0u8; FACTOR_LEN]);
+        let (mut typed_payload, mut typed_words) = ([0u8; PAYLOAD_LEN], [0u8; FACTOR_LEN]);
+        forge(
+            &mut Mix(TestRng(40), Ripple::new()),
+            &mut quiet_payload,
+            &mut quiet_words,
+            None,
+        )
+        .unwrap();
+        forge(
+            &mut Mix(TestRng(40), ripple),
+            &mut typed_payload,
+            &mut typed_words,
+            None,
+        )
+        .unwrap();
+        assert_ne!(quiet_words, typed_words);
+        assert_ne!(&quiet_payload[SHARES_PART], &typed_payload[SHARES_PART]);
+        let mut out = [0u8; 32];
+        recover(&typed_payload, &typed_words, None, &mut out).unwrap();
     }
 
     #[test]

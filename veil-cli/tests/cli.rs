@@ -510,3 +510,46 @@ fn compose_protects_an_existing_key() {
         stderr(&out)
     );
 }
+
+#[test]
+fn forged_key_exists_only_once_recovered() {
+    let dir = TempDir::new("forge");
+    let out = veil(&["forge", "-o", dir.0.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("never computed"), "{stdout}");
+    assert!(stdout.contains("no keyboard attached"), "{stdout}");
+    assert!(
+        files_in(dir.0.to_str().unwrap(), ".key").is_empty(),
+        "forge writes no key file"
+    );
+    let words = printed_words(&out.stdout).join(" ");
+    let s = files_in(dir.0.to_str().unwrap(), ".veil");
+    assert_eq!(s.len(), 5);
+
+    let first = veil_with_stdin(&["recover", &s[0], &s[2], &s[4], "-o", "-"], &words);
+    assert!(first.status.success(), "{}", stderr(&first));
+    assert_eq!(first.stdout.len(), 32);
+    let second = veil_with_stdin(&["recover", &s[1], &s[3], &s[4], "-o", "-"], &words);
+    assert_eq!(
+        second.stdout, first.stdout,
+        "every 3 shares bring the same key into being"
+    );
+
+    let out = veil(&["combine", &s[0], &s[1], &s[2], "-o", "-"]);
+    assert!(
+        stderr(&out).contains("use veil recover"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn forge_can_skip_the_ripple() {
+    let dir = TempDir::new("forge-quiet");
+    let out = veil(&["forge", "--no-ripple", "-o", dir.0.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("no keyboard"));
+    let out = veil(&["forge", "secret.txt"]);
+    assert_eq!(out.status.code(), Some(2));
+}
