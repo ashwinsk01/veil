@@ -125,6 +125,86 @@ of your device. Use the figure from its documentation or from NIST's SP 800-90B 
 raw sample, and go lower when unsure: it only costs speed. `--entropy` reads raw bytes from any device,
 pipe or capture file. Never feed it the same capture twice.
 
+## Using Veil safely
+
+The math holds whatever an attacker can compute. What remains is the room, the paper and the people.
+One rule covers most of it: **no single person, building, account, company or government should
+ever be able to reach everything the secret needs**: *k* shares, plus your words for a composed key.
+Everything below applies that rule to one step at a time.
+
+**The machine**
+
+- [ ] Run `split`, `combine`, `compose`, `forge`, `recover` and `write` on an offline machine you
+  trust, ideally booted fresh from a live USB. Veil keeps its memory out of swap and crash dumps and
+  blocks debuggers, but malware on the same machine sees whatever Veil sees.
+- [ ] Build from source you have read, with the committed `Cargo.lock`:
+  `cargo build --release --locked`.
+- [ ] Keep secrets and shares out of synced and backed-up folders: iCloud Desktop & Documents,
+  Dropbox, Time Machine, snapshots. Work on a RAM disk, which disappears at power-off:
+
+  ```sh
+  diskutil erasevolume HFS+ veil-ram $(hdiutil attach -nomount ram://65536)   # macOS, 32 MB
+  ```
+
+  On Linux, use a `tmpfs` mount on a machine whose swap is off or encrypted.
+
+**Splitting**
+
+- [ ] Prefer `write` or `forge`, so the secret never exists as a file. `split` needs a file, and
+  deleting a file from flash storage doesn't reliably erase it, so keep that file on the RAM disk.
+- [ ] `split` writes all *n* shares into one folder, which therefore holds the secret. Put that
+  folder on the RAM disk, copy each share to its own medium, then power off.
+- [ ] Choose *k* as the number of holders a thief must reach, and *n* − *k* as the number of shares
+  you can afford to lose.
+- [ ] Before any share leaves the room, run `veil check` on all of them. For a composed or forged
+  key, also prove that you wrote the words down correctly: `veil recover … -o - > /dev/null` exits
+  with 0 only if the shares and words combine. The key goes nowhere.
+- [ ] Record the set ID that Veil prints, away from the shares.
+
+**Your words** (`compose` and `forge`)
+
+- [ ] Write them on paper or stamp them in metal. Never type them into a phone, a photo, a password
+  manager or a cloud note.
+- [ ] Words alone reveal nothing, so a second copy in another place is safe, as long as no copy ever
+  sits alongside *k* shares. Losing every copy loses the key for good.
+- [ ] Let the words print to the terminal, never to a file or a pipe. They go to standard output,
+  so `veil forge > log.txt` would put them in a file. Clear the scrollback afterwards (⌘K in macOS
+  Terminal), and don't run inside a session recorder, `script` or a logging `tmux`.
+
+**Typing** (`write`)
+
+- [ ] Make sure no camera can see the screen; the keys alone give nothing away. Add pad cells if the
+  length of the secret matters.
+
+**Holding shares**
+
+- [ ] One share per holder. Choose holders who wouldn't collude, can't be pressured together, and
+  ideally don't live under the same jurisdiction.
+- [ ] A share file is not encrypted: whoever reads *k* of them has the secret. Store each one on its
+  own medium. Email and cloud storage are acceptable only if no single provider or account ever
+  holds *k* shares.
+- [ ] Each holder keeps two copies on different media, and checks once a year that they still read.
+
+**Refreshing**
+
+- [ ] Refresh when a holder leaves, when a share may have been copied, and once a year anyway.
+- [ ] A refresh only helps once every old share, keycard and mask is destroyed, everywhere. On flash
+  storage, destroying them means physically destroying the media.
+- [ ] Refresh needs every share. If one is lost, rebuild and split into a new set instead: `combine`
+  then `split`, or for a composed key, `recover` then `compose --key`.
+- [ ] If a share file was ever read by someone else, a refresh restores secrecy but not full tamper
+  protection: the hash keys inside it survive refreshes, so that reader could later forge a share
+  that passes its checks. Rebuild and split into a new set to replace them.
+- [ ] If *k* shares of one epoch were ever exposed together, the secret is out for good.
+
+**Recovering**
+
+- [ ] Use the same kind of offline machine. Write the output to the RAM disk, or with `-o -`
+  straight into the program that needs it.
+- [ ] Present every share you can gather, not just *k*. Any genuine share among them exposes a
+  forged one. Then check that the set ID matches your record.
+- [ ] Power off when done.
+
 ## What is proven and what is assumed
 
 | Property | Basis |
