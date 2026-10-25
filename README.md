@@ -6,9 +6,10 @@
 > **Experimental and unaudited.** The math is proven, but this code has not been independently
 > reviewed. Don't trust real secrets to it yet. To report a flaw, see [SECURITY.md](SECURITY.md).
 
-Veil splits one small file, up to 10 KB, into *n* shares. Any *k* of them rebuild it. Fewer reveal
-nothing, however much computing power an attacker has, and tampering is caught with the same
-unconditional guarantee. The byte format is in [SPEC.md](SPEC.md).
+Veil uses Shamir's secret sharing to split one small file, up to 10 KB, into *n* shares. Any *k* of
+them rebuild it. Fewer reveal nothing, however much computing power an attacker has, quantum
+included, and tampering is caught with the same unconditional guarantee. The byte format is in
+[SPEC.md](SPEC.md).
 
 ## Use
 
@@ -71,6 +72,8 @@ destroy old shares after a refresh. The full checklist, and what Veil can't hide
 - `veil-core/` holds the scheme. It is `no_std`, has no `unsafe`, and builds for bare-metal RISC-V.
 - `veil-cli/` is the `veil` command. All its `unsafe` code is in `src/harden.rs`.
 - `experiments/` simulates a chaotic PUF and rebuilds the word lists.
+- `fuzz/` feeds every file and word parser malformed input, and checks that tampered shares,
+  keycards and masks never change what Veil rebuilds: `cargo +nightly fuzz run tamper`.
 
 Not done yet: a real hardware noise source, a PUF chip for the device factor the core already
 supports, Kani proofs for the parsing code, an independent audit, a bare-metal device
