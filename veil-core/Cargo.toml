@@ -4,6 +4,8 @@ description = "Information-theoretic secret sharing for a single small file (no_
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 polyval = { version = "=0.7.3", default-features = false, features = ["zeroize"] }

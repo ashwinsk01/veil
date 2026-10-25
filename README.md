@@ -249,3 +249,13 @@ cargo run --release -p puf-sim --bin fuzzy   # the device factor end to end on s
 - A run with a real hardware noise source. So far the hardware path has only seen simulated noise
 - Kani proofs for the parsing code
 - Stage 2 (bare-metal RISC-V on an FPGA) and stage 3 (recovery in fixed logic, no CPU)
+- An independent audit
+
+## License
+
+Licensed under either the [Apache License, Version 2.0](LICENSE-APACHE) or the
+[MIT license](LICENSE-MIT), at your option.
+
+Unless you explicitly state otherwise, any contribution you intentionally submit for inclusion in
+Veil, as defined in the Apache-2.0 license, is dual licensed as above, without any additional terms
+or conditions.
