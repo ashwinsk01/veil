@@ -419,8 +419,9 @@ mod tests {
         let file = random_file(500, 1);
         let shares = make(k, n, &file, 2);
         let body = body_len(n);
-        let positions = (0..share_len(n))
-            .filter(|&p| !(HEADER_LEN..KEYS_OFFSET).contains(&p) || (p - Y_OFFSET) % 97 == 0);
+        let positions = (0..share_len(n)).filter(|&p| {
+            !(HEADER_LEN..KEYS_OFFSET).contains(&p) || (p - Y_OFFSET).is_multiple_of(97)
+        });
         for victim in 0..k as usize {
             let x = victim as u8 + 1;
             for p in positions.clone() {
