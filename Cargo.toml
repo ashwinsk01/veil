@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["veil-core", "veil-cli"]
+members = ["veil-core", "veil-cli", "experiments/puf-sim"]
 
 [workspace.package]
 version = "0.1.0"

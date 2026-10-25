@@ -1,0 +1,7 @@
+[package]
+name = "puf-sim"
+description = "Simulated chaotic PUF, for choosing parameters before real hardware exists"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
