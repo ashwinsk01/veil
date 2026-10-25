@@ -1,5 +1,9 @@
 # Veil
 
+<p align="center">
+  <img src="docs/veil-device.svg" width="100%" alt="Schematic of a possible stage 2 Veil device: front, side and exploded views showing the shuffled keypad screen, digit pad, share card slot, tamper mesh, chaotic PUF, RISC-V core, noise source and zeroize cell">
+</p>
+
 Stage 1 of a long-term vault for one small file (up to 10,240 bytes). The file is split into *n*
 shares. Any *k* of them rebuild it, and fewer reveal nothing, however much computing power an attacker
 has. The byte format is in [SPEC.md](SPEC.md).

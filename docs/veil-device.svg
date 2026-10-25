@@ -1,0 +1,384 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" role="img" aria-labelledby="title desc">
+<title id="title">Veil, stage 2 device concept</title>
+<desc id="desc">Schematic drawing of a possible handheld Veil device: front, side and exploded views of the shuffled keypad screen, digit pad, share card slot, tamper mesh, chaotic PUF, RISC-V core, noise source and zeroize cell.</desc>
+<style>
+.l{fill:none;stroke:#fff;stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.s{fill:none;stroke:#fff;stroke-opacity:.55;stroke-width:1;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.t{fill:none;stroke:#fff;stroke-opacity:.25;stroke-width:.8;vector-effect:non-scaling-stroke}
+.h{fill:none;stroke:#fff;stroke-opacity:.5;stroke-width:1;stroke-dasharray:6 5}
+.c{fill:none;stroke:#fff;stroke-opacity:.35;stroke-width:.9;stroke-dasharray:16 4 3 4}
+.k{fill:#000}
+.w{fill:#fff;stroke:none}
+text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;fill:#fff}
+.z{font-size:11px;fill-opacity:.55;text-anchor:middle}
+.dim{font-size:12px;fill-opacity:.8;text-anchor:middle}
+.mid{text-anchor:middle;dominant-baseline:central}
+.view{font-size:12px;letter-spacing:5px;text-anchor:middle;fill-opacity:.85}
+</style>
+<defs>
+<pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="10" cy="10" r=".9" fill="#fff" fill-opacity=".16"/></pattern>
+<marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1.5L10 5L0 8.5z" fill="#fff" fill-opacity=".8"/></marker>
+</defs>
+<rect width="1600" height="840" fill="#000"/>
+<rect x="40" y="40" width="1520" height="760" fill="url(#dots)"/>
+<rect x="16" y="16" width="1568" height="808" class="l"/>
+<rect x="40" y="40" width="1520" height="760" class="l"/>
+<text x="135" y="32" class="z">1</text>
+<text x="135" y="816" class="z">1</text>
+<text x="325" y="32" class="z">2</text>
+<text x="325" y="816" class="z">2</text>
+<line x1="230" y1="16" x2="230" y2="40" class="s"/>
+<line x1="230" y1="800" x2="230" y2="824" class="s"/>
+<text x="515" y="32" class="z">3</text>
+<text x="515" y="816" class="z">3</text>
+<line x1="420" y1="16" x2="420" y2="40" class="s"/>
+<line x1="420" y1="800" x2="420" y2="824" class="s"/>
+<text x="705" y="32" class="z">4</text>
+<text x="705" y="816" class="z">4</text>
+<line x1="610" y1="16" x2="610" y2="40" class="s"/>
+<line x1="610" y1="800" x2="610" y2="824" class="s"/>
+<text x="895" y="32" class="z">5</text>
+<text x="895" y="816" class="z">5</text>
+<line x1="800" y1="16" x2="800" y2="40" class="s"/>
+<line x1="800" y1="800" x2="800" y2="824" class="s"/>
+<text x="1085" y="32" class="z">6</text>
+<text x="1085" y="816" class="z">6</text>
+<line x1="990" y1="16" x2="990" y2="40" class="s"/>
+<line x1="990" y1="800" x2="990" y2="824" class="s"/>
+<text x="1275" y="32" class="z">7</text>
+<text x="1275" y="816" class="z">7</text>
+<line x1="1180" y1="16" x2="1180" y2="40" class="s"/>
+<line x1="1180" y1="800" x2="1180" y2="824" class="s"/>
+<text x="1465" y="32" class="z">8</text>
+<text x="1465" y="816" class="z">8</text>
+<line x1="1370" y1="16" x2="1370" y2="40" class="s"/>
+<line x1="1370" y1="800" x2="1370" y2="824" class="s"/>
+<text x="28" y="139" class="z">A</text>
+<text x="1572" y="139" class="z">A</text>
+<text x="28" y="329" class="z">B</text>
+<text x="1572" y="329" class="z">B</text>
+<line x1="16" y1="230" x2="40" y2="230" class="s"/>
+<line x1="1560" y1="230" x2="1584" y2="230" class="s"/>
+<text x="28" y="519" class="z">C</text>
+<text x="1572" y="519" class="z">C</text>
+<line x1="16" y1="420" x2="40" y2="420" class="s"/>
+<line x1="1560" y1="420" x2="1584" y2="420" class="s"/>
+<text x="28" y="709" class="z">D</text>
+<text x="1572" y="709" class="z">D</text>
+<line x1="16" y1="610" x2="40" y2="610" class="s"/>
+<line x1="1560" y1="610" x2="1584" y2="610" class="s"/>
+<line x1="310.6" y1="102" x2="310.6" y2="118" class="c"/>
+<line x1="310.6" y1="706" x2="310.6" y2="722" class="c"/>
+<rect x="130" y="118" width="361.2" height="588" rx="27.3" class="l k"/>
+<rect x="140.5" y="128.5" width="340.2" height="567" rx="18.9" class="s"/>
+<rect x="258.1" y="116" width="105" height="4.5" rx="1" class="l k"/>
+<text x="310.6" y="141.52" class="mid" font-size="11" letter-spacing="6">VEIL</text>
+<circle cx="455.5" cy="141.52" r="3" class="w"/>
+<text x="443.32" y="141.52" class="" font-size="8" fill-opacity=".65" text-anchor="end" dominant-baseline="central" letter-spacing="1">SEALED</text>
+<rect x="159.4" y="155.8" width="302.4" height="302.4" rx="6" class="l"/>
+<rect x="166.12" y="162.52" width="288.96" height="288.96" rx="3" class="t"/>
+<text x="310.6" y="176.8" class="mid" font-size="10" letter-spacing="2.5" fill-opacity=".8">⟐ VEIL · WRITE ⟐</text>
+<line x1="183.55" y1="214.6" x2="437.65" y2="214.6" class="s"/>
+<line x1="206.65" y1="191.5" x2="206.65" y2="445.6" class="s"/>
+<rect x="206.65" y="237.7" width="231" height="23.1" rx="2" class="s"/>
+<text x="218.2" y="203.05" class="mid" font-size="11.5" font-weight="700">4</text>
+<text x="241.3" y="203.05" class="mid" font-size="11.5" font-weight="700">7</text>
+<text x="264.4" y="203.05" class="mid" font-size="11.5" font-weight="700">0</text>
+<text x="287.5" y="203.05" class="mid" font-size="11.5" font-weight="700">9</text>
+<text x="310.6" y="203.05" class="mid" font-size="11.5" font-weight="700">2</text>
+<text x="333.7" y="203.05" class="mid" font-size="11.5" font-weight="700">5</text>
+<text x="356.8" y="203.05" class="mid" font-size="11.5" font-weight="700">1</text>
+<text x="379.9" y="203.05" class="mid" font-size="11.5" font-weight="700">8</text>
+<text x="403" y="203.05" class="mid" font-size="11.5" font-weight="700">3</text>
+<text x="426.1" y="203.05" class="mid" font-size="11.5" font-weight="700">6</text>
+<text x="195.1" y="226.15" class="mid" font-size="11.5" font-weight="700">3</text>
+<rect x="186.49" y="240.64" width="17.22" height="17.22" rx="2" class="w"/>
+<text x="195.1" y="249.25" class="mid" font-size="11.5" font-weight="700" style="fill:#000">8</text>
+<text x="195.1" y="272.35" class="mid" font-size="11.5" font-weight="700">1</text>
+<text x="195.1" y="295.45" class="mid" font-size="11.5" font-weight="700">6</text>
+<text x="195.1" y="318.55" class="mid" font-size="11.5" font-weight="700">0</text>
+<text x="195.1" y="341.65" class="mid" font-size="11.5" font-weight="700">9</text>
+<text x="195.1" y="364.75" class="mid" font-size="11.5" font-weight="700">2</text>
+<text x="195.1" y="387.85" class="mid" font-size="11.5" font-weight="700">7</text>
+<text x="195.1" y="410.95" class="mid" font-size="11.5" font-weight="700">5</text>
+<text x="195.1" y="434.05" class="mid" font-size="11.5" font-weight="700">4</text>
+<text x="218.2" y="226.15" class="mid" font-size="11.5">a</text>
+<text x="241.3" y="226.15" class="mid" font-size="11.5">b</text>
+<text x="264.4" y="226.15" class="mid" font-size="11.5">c</text>
+<text x="287.5" y="226.15" class="mid" font-size="11.5">d</text>
+<text x="310.6" y="226.15" class="mid" font-size="11.5">e</text>
+<text x="333.7" y="226.15" class="mid" font-size="11.5">f</text>
+<text x="356.8" y="226.15" class="mid" font-size="11.5">g</text>
+<text x="379.9" y="226.15" class="mid" font-size="11.5">h</text>
+<text x="403" y="226.15" class="mid" font-size="11.5">i</text>
+<text x="426.1" y="226.15" class="mid" font-size="11.5">j</text>
+<text x="218.2" y="249.25" class="mid" font-size="11.5">k</text>
+<text x="241.3" y="249.25" class="mid" font-size="11.5">l</text>
+<text x="264.4" y="249.25" class="mid" font-size="11.5">m</text>
+<text x="287.5" y="249.25" class="mid" font-size="11.5">n</text>
+<text x="310.6" y="249.25" class="mid" font-size="11.5">o</text>
+<text x="333.7" y="249.25" class="mid" font-size="11.5">p</text>
+<text x="356.8" y="249.25" class="mid" font-size="11.5">q</text>
+<text x="379.9" y="249.25" class="mid" font-size="11.5">r</text>
+<text x="403" y="249.25" class="mid" font-size="11.5">s</text>
+<text x="426.1" y="249.25" class="mid" font-size="11.5">t</text>
+<text x="218.2" y="272.35" class="mid" font-size="11.5">u</text>
+<text x="241.3" y="272.35" class="mid" font-size="11.5">v</text>
+<text x="264.4" y="272.35" class="mid" font-size="11.5">w</text>
+<text x="287.5" y="272.35" class="mid" font-size="11.5">x</text>
+<text x="310.6" y="272.35" class="mid" font-size="11.5">y</text>
+<text x="333.7" y="272.35" class="mid" font-size="11.5">z</text>
+<text x="356.8" y="272.35" class="mid" font-size="11.5">A</text>
+<text x="379.9" y="272.35" class="mid" font-size="11.5">B</text>
+<text x="403" y="272.35" class="mid" font-size="11.5">C</text>
+<text x="426.1" y="272.35" class="mid" font-size="11.5">D</text>
+<text x="218.2" y="295.45" class="mid" font-size="11.5">E</text>
+<text x="241.3" y="295.45" class="mid" font-size="11.5">F</text>
+<text x="264.4" y="295.45" class="mid" font-size="11.5">G</text>
+<text x="287.5" y="295.45" class="mid" font-size="11.5">H</text>
+<text x="310.6" y="295.45" class="mid" font-size="11.5">I</text>
+<text x="333.7" y="295.45" class="mid" font-size="11.5">J</text>
+<text x="356.8" y="295.45" class="mid" font-size="11.5">K</text>
+<text x="379.9" y="295.45" class="mid" font-size="11.5">L</text>
+<text x="403" y="295.45" class="mid" font-size="11.5">M</text>
+<text x="426.1" y="295.45" class="mid" font-size="11.5">N</text>
+<text x="218.2" y="318.55" class="mid" font-size="11.5">O</text>
+<text x="241.3" y="318.55" class="mid" font-size="11.5">P</text>
+<text x="264.4" y="318.55" class="mid" font-size="11.5">Q</text>
+<text x="287.5" y="318.55" class="mid" font-size="11.5">R</text>
+<text x="310.6" y="318.55" class="mid" font-size="11.5">S</text>
+<text x="333.7" y="318.55" class="mid" font-size="11.5">T</text>
+<text x="356.8" y="318.55" class="mid" font-size="11.5">U</text>
+<text x="379.9" y="318.55" class="mid" font-size="11.5">V</text>
+<text x="403" y="318.55" class="mid" font-size="11.5">W</text>
+<text x="426.1" y="318.55" class="mid" font-size="11.5">X</text>
+<text x="218.2" y="341.65" class="mid" font-size="11.5">Y</text>
+<text x="241.3" y="341.65" class="mid" font-size="11.5">Z</text>
+<text x="264.4" y="341.65" class="mid" font-size="11.5">0</text>
+<text x="287.5" y="341.65" class="mid" font-size="11.5">1</text>
+<text x="310.6" y="341.65" class="mid" font-size="11.5">2</text>
+<text x="333.7" y="341.65" class="mid" font-size="11.5">3</text>
+<text x="356.8" y="341.65" class="mid" font-size="11.5">4</text>
+<text x="379.9" y="341.65" class="mid" font-size="11.5">5</text>
+<text x="403" y="341.65" class="mid" font-size="11.5">6</text>
+<text x="426.1" y="341.65" class="mid" font-size="11.5">7</text>
+<text x="218.2" y="364.75" class="mid" font-size="11.5">8</text>
+<text x="241.3" y="364.75" class="mid" font-size="11.5">9</text>
+<text x="264.4" y="364.75" class="mid" font-size="11.5" fill-opacity=".55">␣</text>
+<text x="287.5" y="364.75" class="mid" font-size="11.5">.</text>
+<text x="310.6" y="364.75" class="mid" font-size="11.5">,</text>
+<text x="333.7" y="364.75" class="mid" font-size="11.5">!</text>
+<text x="356.8" y="364.75" class="mid" font-size="11.5">?</text>
+<text x="379.9" y="364.75" class="mid" font-size="11.5">-</text>
+<text x="403" y="364.75" class="mid" font-size="11.5">_</text>
+<text x="426.1" y="364.75" class="mid" font-size="11.5">@</text>
+<text x="218.2" y="387.85" class="mid" font-size="11.5">#</text>
+<text x="241.3" y="387.85" class="mid" font-size="11.5">$</text>
+<text x="264.4" y="387.85" class="mid" font-size="11.5">%</text>
+<text x="287.5" y="387.85" class="mid" font-size="11.5">&amp;</text>
+<text x="310.6" y="387.85" class="mid" font-size="11.5">*</text>
+<text x="333.7" y="387.85" class="mid" font-size="11.5">(</text>
+<text x="356.8" y="387.85" class="mid" font-size="11.5">)</text>
+<text x="379.9" y="387.85" class="mid" font-size="11.5">+</text>
+<text x="403" y="387.85" class="mid" font-size="11.5">=</text>
+<text x="426.1" y="387.85" class="mid" font-size="11.5">/</text>
+<text x="218.2" y="410.95" class="mid" font-size="11.5">:</text>
+<text x="241.3" y="410.95" class="mid" font-size="11.5">;</text>
+<text x="264.4" y="410.95" class="mid" font-size="11.5">'</text>
+<text x="287.5" y="410.95" class="mid" font-size="11.5">"</text>
+<text x="310.6" y="410.95" class="mid" font-size="11.5">&lt;</text>
+<text x="333.7" y="410.95" class="mid" font-size="11.5">&gt;</text>
+<text x="356.8" y="410.95" class="mid" font-size="11.5">[</text>
+<text x="379.9" y="410.95" class="mid" font-size="11.5">]</text>
+<text x="403" y="410.95" class="mid" font-size="11.5">{</text>
+<text x="426.1" y="410.95" class="mid" font-size="11.5">}</text>
+<text x="218.2" y="434.05" class="mid" font-size="11.5">\</text>
+<text x="241.3" y="434.05" class="mid" font-size="11.5">|</text>
+<text x="264.4" y="434.05" class="mid" font-size="11.5">`</text>
+<text x="287.5" y="434.05" class="mid" font-size="11.5">~</text>
+<text x="310.6" y="434.05" class="mid" font-size="11.5">^</text>
+<text x="333.7" y="434.05" class="mid" font-size="11.5" fill-opacity=".55">⌫</text>
+<text x="356.8" y="434.05" class="mid" font-size="11.5" fill-opacity=".55">·</text>
+<rect x="159.4" y="491.8" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="164.02" y="496.42" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="203.5" y="508.6" class="mid" font-size="15" font-weight="600">1</text>
+<rect x="266.5" y="491.8" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="271.12" y="496.42" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="310.6" y="508.6" class="mid" font-size="15" font-weight="600">2</text>
+<rect x="373.6" y="491.8" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="378.22" y="496.42" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="417.7" y="508.6" class="mid" font-size="15" font-weight="600">3</text>
+<rect x="159.4" y="540.1" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="164.02" y="544.72" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="203.5" y="556.9" class="mid" font-size="15" font-weight="600">4</text>
+<rect x="266.5" y="540.1" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="271.12" y="544.72" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="310.6" y="556.9" class="mid" font-size="15" font-weight="600">5</text>
+<rect x="373.6" y="540.1" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="378.22" y="544.72" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="417.7" y="556.9" class="mid" font-size="15" font-weight="600">6</text>
+<rect x="159.4" y="588.4" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="164.02" y="593.02" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="203.5" y="605.2" class="mid" font-size="15" font-weight="600">7</text>
+<rect x="266.5" y="588.4" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="271.12" y="593.02" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="310.6" y="605.2" class="mid" font-size="15" font-weight="600">8</text>
+<rect x="373.6" y="588.4" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="378.22" y="593.02" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="417.7" y="605.2" class="mid" font-size="15" font-weight="600">9</text>
+<rect x="159.4" y="636.7" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="164.02" y="641.32" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="203.5" y="653.5" class="mid" font-size="15" font-weight="600">✕</text>
+<rect x="266.5" y="636.7" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="271.12" y="641.32" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="310.6" y="653.5" class="mid" font-size="15" font-weight="600">0</text>
+<rect x="373.6" y="636.7" width="88.2" height="35.7" rx="6.72" class="l k"/>
+<rect x="378.22" y="641.32" width="78.96" height="24.78" rx="4.2" class="t"/>
+<text x="417.7" y="653.5" class="mid" font-size="15" font-weight="600">↵</text>
+<text x="310.6" y="690.88" class="mid" font-size="7.5" letter-spacing="2" fill-opacity=".5">NO RADIO · NO NETWORK</text>
+<line x1="130" y1="112" x2="130" y2="88" class="s"/>
+<line x1="491.2" y1="112" x2="491.2" y2="88" class="s"/>
+<line x1="130" y1="96" x2="491.2" y2="96" class="s" marker-start="url(#arr)" marker-end="url(#arr)"/>
+<text x="310.6" y="91" class="dim">86</text>
+<line x1="124" y1="118" x2="96" y2="118" class="s"/>
+<line x1="124" y1="706" x2="96" y2="706" class="s"/>
+<line x1="104" y1="118" x2="104" y2="706" class="s" marker-start="url(#arr)" marker-end="url(#arr)"/>
+<text transform="translate(98 412) rotate(-90)" class="dim">140</text>
+<rect x="560" y="118" width="67.2" height="588" rx="12.6" class="l k"/>
+<line x1="585.2" y1="130.6" x2="585.2" y2="693.4" class="s"/>
+<rect x="555.38" y="494.32" width="6.62" height="30.66" rx="1.5" class="l k"/>
+<rect x="555.38" y="542.62" width="6.62" height="30.66" rx="1.5" class="l k"/>
+<rect x="555.38" y="590.92" width="6.62" height="30.66" rx="1.5" class="l k"/>
+<rect x="555.38" y="639.22" width="6.62" height="30.66" rx="1.5" class="l k"/>
+<rect x="563.36" y="155.8" width="10.08" height="302.4" class="h"/>
+<rect x="599.9" y="134.8" width="6.3" height="554.4" class="h"/>
+<rect x="593.6" y="120.52" width="4.2" height="109.2" class="h"/>
+<rect x="610.4" y="529.6" width="13.44" height="100.8" class="h"/>
+<rect x="590.24" y="116" width="10.92" height="4.5" rx="1" class="l k"/>
+<line x1="560" y1="112" x2="560" y2="88" class="s"/>
+<line x1="627.2" y1="112" x2="627.2" y2="88" class="s"/>
+<line x1="560" y1="96" x2="627.2" y2="96" class="s" marker-start="url(#arr)" marker-end="url(#arr)"/>
+<text x="593.6" y="91" class="dim">16</text>
+<line x1="754.49" y1="209" x2="754.49" y2="671" class="h"/>
+<line x1="1076.01" y1="163.1" x2="1076.01" y2="625.1" class="h"/>
+<line x1="875.5" y1="278.87" x2="875.5" y2="740.87" class="h"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 552)"><rect x="0" y="0" width="86" height="140" rx="6.5" class="l k"/></g>
+<line x1="754.49" y1="659" x2="754.49" y2="671" class="l"/>
+<line x1="1076.01" y1="613.1" x2="1076.01" y2="625.1" class="l"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 540)"><rect x="0" y="0" width="86" height="140" rx="6.5" class="l k"/><rect x="2.5" y="2.5" width="81" height="135" rx="4.5" class="s"/><circle cx="8" cy="8" r="2.6" class="s"/><circle cx="8" cy="8" r="1.1" class="l"/><circle cx="78" cy="8" r="2.6" class="s"/><circle cx="78" cy="8" r="1.1" class="l"/><circle cx="8" cy="132" r="2.6" class="s"/><circle cx="8" cy="132" r="1.1" class="l"/><circle cx="78" cy="132" r="2.6" class="s"/><circle cx="78" cy="132" r="1.1" class="l"/><circle cx="43" cy="110" r="12.5" class="l"/><circle cx="43" cy="110" r="10.8" class="s"/><rect x="30" y="-0.4" width="26" height="2.9" rx="0.6" class="l k"/></g>
+<line x1="850.36" y1="670.05" x2="862.36" y2="670.05" class="l"/>
+<line x1="856.36" y1="664.05" x2="856.36" y2="676.05" class="l"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 393)"><rect x="4" y="4" width="78" height="132" rx="3" class="l k"/></g>
+<line x1="763.25" y1="509" x2="763.25" y2="512" class="l"/>
+<line x1="1067.25" y1="463.1" x2="1067.25" y2="466.1" class="l"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 390)"><rect x="4" y="4" width="78" height="132" rx="3" class="l k"/><circle cx="8.5" cy="8.5" r="1.6" class="s"/><circle cx="77.5" cy="8.5" r="1.6" class="s"/><circle cx="8.5" cy="131.5" r="1.6" class="s"/><circle cx="77.5" cy="131.5" r="1.6" class="s"/><rect x="29" y="5" width="28" height="9" rx="0.6" class="l"/><line x1="31" y1="7" x2="31" y2="10" class="s"/><line x1="34" y1="7" x2="34" y2="10" class="s"/><line x1="37" y1="7" x2="37" y2="10" class="s"/><line x1="40" y1="7" x2="40" y2="10" class="s"/><line x1="43" y1="7" x2="43" y2="10" class="s"/><line x1="46" y1="7" x2="46" y2="10" class="s"/><line x1="49" y1="7" x2="49" y2="10" class="s"/><line x1="52" y1="7" x2="52" y2="10" class="s"/><line x1="55" y1="7" x2="55" y2="10" class="s"/><line x1="32.75" y1="14" x2="32.75" y2="36.4" class="s"/><line x1="38.75" y1="14" x2="38.75" y2="36.4" class="s"/><line x1="47.75" y1="14" x2="47.75" y2="36.4" class="s"/><line x1="53.75" y1="14" x2="53.75" y2="36.4" class="s"/><line x1="20" y1="48.75" x2="23.4" y2="48.75" class="s"/><line x1="20" y1="51.75" x2="23.4" y2="51.75" class="s"/><line x1="32.75" y1="75.6" x2="32.75" y2="86" class="s"/><line x1="53.75" y1="75.6" x2="53.75" y2="86" class="s"/><polyline points="70,24 70,45.75 62.6,45.75" class="s"/><polyline points="75,24 75,48.75 62.6,48.75" class="s"/><rect x="66" y="18" width="14" height="6" rx="0.5" class="l"/><rect x="25" y="38" width="36" height="36" rx="1" class="l k"/><line x1="26.75" y1="38" x2="26.75" y2="36.4" class="s"/><line x1="26.75" y1="74" x2="26.75" y2="75.6" class="s"/><line x1="25" y1="39.75" x2="23.4" y2="39.75" class="s"/><line x1="61" y1="39.75" x2="62.6" y2="39.75" class="s"/><line x1="29.75" y1="38" x2="29.75" y2="36.4" class="s"/><line x1="29.75" y1="74" x2="29.75" y2="75.6" class="s"/><line x1="25" y1="42.75" x2="23.4" y2="42.75" class="s"/><line x1="61" y1="42.75" x2="62.6" y2="42.75" class="s"/><line x1="32.75" y1="38" x2="32.75" y2="36.4" class="s"/><line x1="32.75" y1="74" x2="32.75" y2="75.6" class="s"/><line x1="25" y1="45.75" x2="23.4" y2="45.75" class="s"/><line x1="61" y1="45.75" x2="62.6" y2="45.75" class="s"/><line x1="35.75" y1="38" x2="35.75" y2="36.4" class="s"/><line x1="35.75" y1="74" x2="35.75" y2="75.6" class="s"/><line x1="25" y1="48.75" x2="23.4" y2="48.75" class="s"/><line x1="61" y1="48.75" x2="62.6" y2="48.75" class="s"/><line x1="38.75" y1="38" x2="38.75" y2="36.4" class="s"/><line x1="38.75" y1="74" x2="38.75" y2="75.6" class="s"/><line x1="25" y1="51.75" x2="23.4" y2="51.75" class="s"/><line x1="61" y1="51.75" x2="62.6" y2="51.75" class="s"/><line x1="41.75" y1="38" x2="41.75" y2="36.4" class="s"/><line x1="41.75" y1="74" x2="41.75" y2="75.6" class="s"/><line x1="25" y1="54.75" x2="23.4" y2="54.75" class="s"/><line x1="61" y1="54.75" x2="62.6" y2="54.75" class="s"/><line x1="44.75" y1="38" x2="44.75" y2="36.4" class="s"/><line x1="44.75" y1="74" x2="44.75" y2="75.6" class="s"/><line x1="25" y1="57.75" x2="23.4" y2="57.75" class="s"/><line x1="61" y1="57.75" x2="62.6" y2="57.75" class="s"/><line x1="47.75" y1="38" x2="47.75" y2="36.4" class="s"/><line x1="47.75" y1="74" x2="47.75" y2="75.6" class="s"/><line x1="25" y1="60.75" x2="23.4" y2="60.75" class="s"/><line x1="61" y1="60.75" x2="62.6" y2="60.75" class="s"/><line x1="50.75" y1="38" x2="50.75" y2="36.4" class="s"/><line x1="50.75" y1="74" x2="50.75" y2="75.6" class="s"/><line x1="25" y1="63.75" x2="23.4" y2="63.75" class="s"/><line x1="61" y1="63.75" x2="62.6" y2="63.75" class="s"/><line x1="53.75" y1="38" x2="53.75" y2="36.4" class="s"/><line x1="53.75" y1="74" x2="53.75" y2="75.6" class="s"/><line x1="25" y1="66.75" x2="23.4" y2="66.75" class="s"/><line x1="61" y1="66.75" x2="62.6" y2="66.75" class="s"/><line x1="56.75" y1="38" x2="56.75" y2="36.4" class="s"/><line x1="56.75" y1="74" x2="56.75" y2="75.6" class="s"/><line x1="25" y1="69.75" x2="23.4" y2="69.75" class="s"/><line x1="61" y1="69.75" x2="62.6" y2="69.75" class="s"/><line x1="59.75" y1="38" x2="59.75" y2="36.4" class="s"/><line x1="59.75" y1="74" x2="59.75" y2="75.6" class="s"/><line x1="25" y1="72.75" x2="23.4" y2="72.75" class="s"/><line x1="61" y1="72.75" x2="62.6" y2="72.75" class="s"/><circle cx="27.2" cy="40.2" r="0.7" class="w"/><rect x="29" y="42" width="28" height="28" class="s"/><line x1="39" y1="44.5" x2="43.82" y2="46.25" class="s"/><line x1="39" y1="44.5" x2="41.57" y2="59.05" class="s"/><line x1="43.82" y1="46.25" x2="46.39" y2="50.7" class="s"/><line x1="43.82" y1="46.25" x2="36.43" y2="59.05" class="s"/><line x1="46.39" y1="50.7" x2="45.5" y2="55.75" class="s"/><line x1="46.39" y1="50.7" x2="32.5" y2="55.75" class="s"/><line x1="45.5" y1="55.75" x2="41.57" y2="59.05" class="s"/><line x1="45.5" y1="55.75" x2="31.61" y2="50.7" class="s"/><line x1="41.57" y1="59.05" x2="36.43" y2="59.05" class="s"/><line x1="41.57" y1="59.05" x2="34.18" y2="46.25" class="s"/><line x1="36.43" y1="59.05" x2="32.5" y2="55.75" class="s"/><line x1="36.43" y1="59.05" x2="39" y2="44.5" class="s"/><line x1="32.5" y1="55.75" x2="31.61" y2="50.7" class="s"/><line x1="32.5" y1="55.75" x2="43.82" y2="46.25" class="s"/><line x1="31.61" y1="50.7" x2="34.18" y2="46.25" class="s"/><line x1="31.61" y1="50.7" x2="46.39" y2="50.7" class="s"/><line x1="34.18" y1="46.25" x2="39" y2="44.5" class="s"/><line x1="34.18" y1="46.25" x2="45.5" y2="55.75" class="s"/><circle cx="39" cy="44.5" r="0.75" class="w"/><circle cx="43.82" cy="46.25" r="0.75" class="w"/><circle cx="46.39" cy="50.7" r="0.75" class="w"/><circle cx="45.5" cy="55.75" r="0.75" class="w"/><circle cx="41.57" cy="59.05" r="0.75" class="w"/><circle cx="36.43" cy="59.05" r="0.75" class="w"/><circle cx="32.5" cy="55.75" r="0.75" class="w"/><circle cx="31.61" cy="50.7" r="0.75" class="w"/><circle cx="34.18" cy="46.25" r="0.75" class="w"/><rect x="46" y="59" width="9" height="9" class="l"/><rect x="46.8" y="59.8" width="2.2" height="2.2" class="t"/><rect x="46.8" y="62.4" width="2.2" height="2.2" class="t"/><rect x="46.8" y="65" width="2.2" height="2.2" class="t"/><rect x="49.4" y="59.8" width="2.2" height="2.2" class="t"/><rect x="49.4" y="62.4" width="2.2" height="2.2" class="t"/><rect x="49.4" y="65" width="2.2" height="2.2" class="t"/><rect x="52" y="59.8" width="2.2" height="2.2" class="t"/><rect x="52" y="62.4" width="2.2" height="2.2" class="t"/><rect x="52" y="65" width="2.2" height="2.2" class="t"/><rect x="8" y="44" width="12" height="12" rx="0.6" class="l"/><line x1="10.5" y1="44" x2="10.5" y2="42.6" class="s"/><line x1="10.5" y1="56" x2="10.5" y2="57.4" class="s"/><line x1="14" y1="44" x2="14" y2="42.6" class="s"/><line x1="14" y1="56" x2="14" y2="57.4" class="s"/><line x1="17.5" y1="44" x2="17.5" y2="42.6" class="s"/><line x1="17.5" y1="56" x2="17.5" y2="57.4" class="s"/><polyline points="9.5,50 10.1,51.14 10.7,51.02 11.3,48.15 11.9,49.35 12.5,51.88 13.1,50.23 13.7,48.85 14.3,48.7 14.9,52.6 15.5,49.51 16.1,49.46 16.7,48.17 17.3,53.16 17.9,48.95 18.5,49.88" class="l"/><circle cx="17.5" cy="93.25" r="2.8" class="s"/><circle cx="17.5" cy="93.25" r="1.2" class="l"/><circle cx="43" cy="93.25" r="2.8" class="s"/><circle cx="43" cy="93.25" r="1.2" class="l"/><circle cx="68.5" cy="93.25" r="2.8" class="s"/><circle cx="68.5" cy="93.25" r="1.2" class="l"/><circle cx="17.5" cy="104.75" r="2.8" class="s"/><circle cx="17.5" cy="104.75" r="1.2" class="l"/><circle cx="43" cy="104.75" r="2.8" class="s"/><circle cx="43" cy="104.75" r="1.2" class="l"/><circle cx="68.5" cy="104.75" r="2.8" class="s"/><circle cx="68.5" cy="104.75" r="1.2" class="l"/><circle cx="17.5" cy="116.25" r="2.8" class="s"/><circle cx="17.5" cy="116.25" r="1.2" class="l"/><circle cx="43" cy="116.25" r="2.8" class="s"/><circle cx="43" cy="116.25" r="1.2" class="l"/><circle cx="68.5" cy="116.25" r="2.8" class="s"/><circle cx="68.5" cy="116.25" r="1.2" class="l"/><circle cx="17.5" cy="127.75" r="2.8" class="s"/><circle cx="17.5" cy="127.75" r="1.2" class="l"/><circle cx="43" cy="127.75" r="2.8" class="s"/><circle cx="43" cy="127.75" r="1.2" class="l"/><circle cx="68.5" cy="127.75" r="2.8" class="s"/><circle cx="68.5" cy="127.75" r="1.2" class="l"/></g>
+<line x1="1021.25" y1="424.85" x2="1006.53" y2="433.35" class="h"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 390)"><rect x="31.5" y="-30" width="23" height="26" rx="1.2" class="l k"/><line x1="34" y1="-8" x2="34" y2="-5" class="s"/><line x1="37.6" y1="-8" x2="37.6" y2="-5" class="s"/><line x1="41.2" y1="-8" x2="41.2" y2="-5" class="s"/><line x1="44.8" y1="-8" x2="44.8" y2="-5" class="s"/><line x1="48.4" y1="-8" x2="48.4" y2="-5" class="s"/><text x="41" y="-22" class="mid" font-size="3.2" letter-spacing=".6">SHARE</text><text x="41" y="-16.5" class="mid" font-size="3.2" letter-spacing=".6">3 / 5</text></g>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 242)"><rect x="3" y="3" width="80" height="134" rx="5" class="l k"/></g>
+<line x1="762.03" y1="359" x2="762.03" y2="361" class="l"/>
+<line x1="1068.47" y1="313.1" x2="1068.47" y2="315.1" class="l"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 240)"><rect x="3" y="3" width="80" height="134" rx="5" class="l k"/><polyline points="5.5,6.5 80.5,6.5 80.5,17.5 8.5,17.5 8.5,22.5 80.5,22.5 80.5,33.5 8.5,33.5 8.5,38.5 80.5,38.5 80.5,49.5 8.5,49.5 8.5,54.5 80.5,54.5 80.5,65.5 8.5,65.5 8.5,70.5 80.5,70.5 80.5,81.5 8.5,81.5 8.5,86.5 80.5,86.5 80.5,97.5 8.5,97.5 8.5,102.5 80.5,102.5 80.5,113.5 8.5,113.5 8.5,118.5 80.5,118.5 80.5,129.5 5.5,129.5" class="s"/><polyline points="5.5,9.5 77.5,9.5 77.5,14.5 5.5,14.5 5.5,25.5 77.5,25.5 77.5,30.5 5.5,30.5 5.5,41.5 77.5,41.5 77.5,46.5 5.5,46.5 5.5,57.5 77.5,57.5 77.5,62.5 5.5,62.5 5.5,73.5 77.5,73.5 77.5,78.5 5.5,78.5 5.5,89.5 77.5,89.5 77.5,94.5 5.5,94.5 5.5,105.5 77.5,105.5 77.5,110.5 5.5,110.5 5.5,121.5 77.5,121.5 77.5,126.5 5.5,126.5" class="s"/><circle cx="5.5" cy="6.5" r="0.9" class="w"/><circle cx="5.5" cy="9.5" r="0.9" class="w"/></g>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 95)"><rect x="0" y="0" width="86" height="140" rx="6.5" class="l k"/></g>
+<line x1="754.49" y1="209" x2="754.49" y2="214" class="l"/>
+<line x1="1076.01" y1="163.1" x2="1076.01" y2="168.1" class="l"/>
+<g transform="matrix(1.47224 0.85 -1.47224 0.85 955 90)"><rect x="0" y="0" width="86" height="140" rx="6.5" class="l k"/><rect x="7" y="9" width="72" height="72" rx="1.5" class="l"/><line x1="12.75" y1="17.5" x2="12.75" y2="78" class="t"/><line x1="12.75" y1="17.5" x2="73.25" y2="17.5" class="t"/><line x1="18.25" y1="17.5" x2="18.25" y2="78" class="t"/><line x1="12.75" y1="23" x2="73.25" y2="23" class="t"/><line x1="23.75" y1="17.5" x2="23.75" y2="78" class="t"/><line x1="12.75" y1="28.5" x2="73.25" y2="28.5" class="t"/><line x1="29.25" y1="17.5" x2="29.25" y2="78" class="t"/><line x1="12.75" y1="34" x2="73.25" y2="34" class="t"/><line x1="34.75" y1="17.5" x2="34.75" y2="78" class="t"/><line x1="12.75" y1="39.5" x2="73.25" y2="39.5" class="t"/><line x1="40.25" y1="17.5" x2="40.25" y2="78" class="t"/><line x1="12.75" y1="45" x2="73.25" y2="45" class="t"/><line x1="45.75" y1="17.5" x2="45.75" y2="78" class="t"/><line x1="12.75" y1="50.5" x2="73.25" y2="50.5" class="t"/><line x1="51.25" y1="17.5" x2="51.25" y2="78" class="t"/><line x1="12.75" y1="56" x2="73.25" y2="56" class="t"/><line x1="56.75" y1="17.5" x2="56.75" y2="78" class="t"/><line x1="12.75" y1="61.5" x2="73.25" y2="61.5" class="t"/><line x1="62.25" y1="17.5" x2="62.25" y2="78" class="t"/><line x1="12.75" y1="67" x2="73.25" y2="67" class="t"/><line x1="67.75" y1="17.5" x2="67.75" y2="78" class="t"/><line x1="12.75" y1="72.5" x2="73.25" y2="72.5" class="t"/><line x1="73.25" y1="17.5" x2="73.25" y2="78" class="t"/><line x1="12.75" y1="78" x2="73.25" y2="78" class="t"/><rect x="7" y="89" width="21" height="8.5" rx="1.6" class="l"/><rect x="32.5" y="89" width="21" height="8.5" rx="1.6" class="l"/><rect x="58" y="89" width="21" height="8.5" rx="1.6" class="l"/><rect x="7" y="100.5" width="21" height="8.5" rx="1.6" class="l"/><rect x="32.5" y="100.5" width="21" height="8.5" rx="1.6" class="l"/><rect x="58" y="100.5" width="21" height="8.5" rx="1.6" class="l"/><rect x="7" y="112" width="21" height="8.5" rx="1.6" class="l"/><rect x="32.5" y="112" width="21" height="8.5" rx="1.6" class="l"/><rect x="58" y="112" width="21" height="8.5" rx="1.6" class="l"/><rect x="7" y="123.5" width="21" height="8.5" rx="1.6" class="l"/><rect x="32.5" y="123.5" width="21" height="8.5" rx="1.6" class="l"/><rect x="58" y="123.5" width="21" height="8.5" rx="1.6" class="l"/><text x="43" y="5.4" class="mid" font-size="3" letter-spacing="1.6">VEIL</text><circle cx="77.5" cy="5.4" r="0.8" class="w"/></g>
+<line x1="461.8" y1="244" x2="512" y2="244" class="l" style="stroke-width:1"/>
+<circle cx="461.8" cy="244" r="2.3" class="w"/>
+<circle cx="525" cy="244" r="13" class="l k"/>
+<text x="525" y="244.5" class="mid" font-size="13" font-weight="700">1</text>
+<line x1="461.8" y1="509.65" x2="512" y2="509.65" class="l" style="stroke-width:1"/>
+<circle cx="461.8" cy="509.65" r="2.3" class="w"/>
+<circle cx="525" cy="509.65" r="13" class="l k"/>
+<text x="525" y="510.15" class="mid" font-size="13" font-weight="700">2</text>
+<line x1="1074.25" y1="411.25" x2="1120.24" y2="389.55" class="l" style="stroke-width:1"/>
+<circle cx="1074.25" cy="411.25" r="2.3" class="w"/>
+<circle cx="1132" cy="384" r="13" class="l k"/>
+<text x="1132" y="384.5" class="mid" font-size="13" font-weight="700">3</text>
+<line x1="1025.67" y1="321.6" x2="1119.36" y2="299.04" class="l" style="stroke-width:1"/>
+<circle cx="1025.67" cy="321.6" r="2.3" class="w"/>
+<circle cx="1132" cy="296" r="13" class="l k"/>
+<text x="1132" y="296.5" class="mid" font-size="13" font-weight="700">4</text>
+<line x1="935.86" y1="467.35" x2="712.88" y2="498.22" class="l" style="stroke-width:1"/>
+<circle cx="935.86" cy="467.35" r="2.3" class="w"/>
+<circle cx="700" cy="500" r="13" class="l k"/>
+<text x="700" y="500.5" class="mid" font-size="13" font-weight="700">5</text>
+<line x1="935.86" y1="486.9" x2="1119" y2="487.93" class="l" style="stroke-width:1"/>
+<circle cx="935.86" cy="486.9" r="2.3" class="w"/>
+<circle cx="1132" cy="488" r="13" class="l k"/>
+<text x="1132" y="488.5" class="mid" font-size="13" font-weight="700">6</text>
+<line x1="902" y1="444.4" x2="712.91" y2="421.56" class="l" style="stroke-width:1"/>
+<circle cx="902" cy="444.4" r="2.3" class="w"/>
+<circle cx="700" cy="420" r="13" class="l k"/>
+<text x="700" y="420.5" class="mid" font-size="13" font-weight="700">7</text>
+<line x1="856.36" y1="670.05" x2="712.9" y2="688.35" class="l" style="stroke-width:1"/>
+<circle cx="856.36" cy="670.05" r="2.3" class="w"/>
+<circle cx="700" cy="690" r="13" class="l k"/>
+<text x="700" y="690.5" class="mid" font-size="13" font-weight="700">8</text>
+<text x="310.6" y="772" class="view">FRONT</text>
+<line x1="279.6" y1="781" x2="341.6" y2="781" class="s"/>
+<text x="593.6" y="772" class="view">SIDE</text>
+<line x1="568.6" y1="781" x2="618.6" y2="781" class="s"/>
+<text x="915" y="772" class="view">EXPLODED</text>
+<line x1="866" y1="781" x2="964" y2="781" class="s"/>
+<rect x="1190" y="60" width="370" height="552" class="l k"/>
+<text x="1214" y="81" class="" font-size="10.5" letter-spacing="2" fill-opacity=".6" text-anchor="middle">ITEM</text>
+<text x="1248" y="81" class="" font-size="10.5" letter-spacing="2" fill-opacity=".6">PART</text>
+<line x1="1190" y1="92" x2="1560" y2="92" class="l"/>
+<line x1="1236" y1="60" x2="1236" y2="612" class="s"/>
+<circle cx="1213" cy="124.5" r="11" class="l"/>
+<text x="1213" y="125" class="mid" font-size="12" font-weight="700">1</text>
+<text x="1248" y="120" class="" font-size="13.5" font-weight="700" letter-spacing="1">SHUFFLED KEYPAD SCREEN</text>
+<text x="1248" y="139" class="" font-size="11" fill-opacity=".7">Labels reshuffle after every character</text>
+<line x1="1190" y1="157" x2="1560" y2="157" class="s"/>
+<circle cx="1213" cy="189.5" r="11" class="l"/>
+<text x="1213" y="190" class="mid" font-size="12" font-weight="700">2</text>
+<text x="1248" y="185" class="" font-size="13.5" font-weight="700" letter-spacing="1">DIGIT PAD</text>
+<text x="1248" y="204" class="" font-size="11" fill-opacity=".7">Twelve keys. What you press says nothing</text>
+<line x1="1190" y1="222" x2="1560" y2="222" class="s"/>
+<circle cx="1213" cy="254.5" r="11" class="l"/>
+<text x="1213" y="255" class="mid" font-size="12" font-weight="700">3</text>
+<text x="1248" y="250" class="" font-size="13.5" font-weight="700" letter-spacing="1">SHARE CARD SLOT</text>
+<text x="1248" y="269" class="" font-size="11" fill-opacity=".7">One share at a time. No radio, no network</text>
+<line x1="1190" y1="287" x2="1560" y2="287" class="s"/>
+<circle cx="1213" cy="319.5" r="11" class="l"/>
+<text x="1213" y="320" class="mid" font-size="12" font-weight="700">4</text>
+<text x="1248" y="315" class="" font-size="13.5" font-weight="700" letter-spacing="1">TAMPER MESH</text>
+<text x="1248" y="334" class="" font-size="11" fill-opacity=".7">Cut or short it and the device forgets</text>
+<line x1="1190" y1="352" x2="1560" y2="352" class="s"/>
+<circle cx="1213" cy="384.5" r="11" class="l"/>
+<text x="1213" y="385" class="mid" font-size="12" font-weight="700">5</text>
+<text x="1248" y="380" class="" font-size="13.5" font-weight="700" letter-spacing="1">CHAOTIC PUF</text>
+<text x="1248" y="399" class="" font-size="11" fill-opacity=".7">The device factor, read from the silicon</text>
+<line x1="1190" y1="417" x2="1560" y2="417" class="s"/>
+<circle cx="1213" cy="449.5" r="11" class="l"/>
+<text x="1213" y="450" class="mid" font-size="12" font-weight="700">6</text>
+<text x="1248" y="445" class="" font-size="13.5" font-weight="700" letter-spacing="1">RISC-V CORE</text>
+<text x="1248" y="464" class="" font-size="11" fill-opacity=".7">veil-core on bare metal, no unsafe code</text>
+<line x1="1190" y1="482" x2="1560" y2="482" class="s"/>
+<circle cx="1213" cy="514.5" r="11" class="l"/>
+<text x="1213" y="515" class="mid" font-size="12" font-weight="700">7</text>
+<text x="1248" y="510" class="" font-size="13.5" font-weight="700" letter-spacing="1">NOISE SOURCE</text>
+<text x="1248" y="529" class="" font-size="11" fill-opacity=".7">Health-tested, then Toeplitz-extracted</text>
+<line x1="1190" y1="547" x2="1560" y2="547" class="s"/>
+<circle cx="1213" cy="579.5" r="11" class="l"/>
+<text x="1213" y="580" class="mid" font-size="12" font-weight="700">8</text>
+<text x="1248" y="575" class="" font-size="13.5" font-weight="700" letter-spacing="1">ZEROIZE CELL</text>
+<text x="1248" y="594" class="" font-size="11" fill-opacity=".7">Keeps the wipe armed with power off</text>
+<rect x="1190" y="632" width="370" height="168" class="l k"/>
+<text x="1210" y="690" class="" font-size="54" font-weight="700" letter-spacing="16">VEIL</text>
+<path d="M1520 648L1540 668L1520 688L1500 668Z" class="l"/>
+<path d="M1520 657L1531 668L1520 679L1509 668Z" class="s"/>
+<circle cx="1520" cy="668" r="3" class="w"/>
+<line x1="1190" y1="706" x2="1560" y2="706" class="s"/>
+<text x="1210" y="726" class="" font-size="11.5" letter-spacing="1">INFORMATION-THEORETIC VAULT · STAGE 2</text>
+<line x1="1190" y1="740" x2="1560" y2="740" class="s"/>
+<text x="1236.25" y="755.5" class="mid" font-size="10" letter-spacing="1.5" fill-opacity=".8">CONCEPT</text>
+<line x1="1282.5" y1="740" x2="1282.5" y2="770" class="s"/>
+<text x="1328.75" y="755.5" class="mid" font-size="10" letter-spacing="1.5" fill-opacity=".8">SCALE NTS</text>
+<line x1="1375" y1="740" x2="1375" y2="770" class="s"/>
+<text x="1421.25" y="755.5" class="mid" font-size="10" letter-spacing="1.5" fill-opacity=".8">UNITS MM</text>
+<line x1="1467.5" y1="740" x2="1467.5" y2="770" class="s"/>
+<text x="1513.75" y="755.5" class="mid" font-size="10" letter-spacing="1.5" fill-opacity=".8">REV A</text>
+<line x1="1190" y1="770" x2="1560" y2="770" class="s"/>
+<text x="1375" y="785.5" class="mid" font-size="10" letter-spacing="2" fill-opacity=".8">THE SECRET IS NEVER WHOLE, ANYWHERE</text>
+</svg>
