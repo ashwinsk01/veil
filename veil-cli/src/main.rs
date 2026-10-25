@@ -1,0 +1,477 @@
+//! `veil`: split one small file into shares, check them, refresh them, and recombine them.
+
+mod harden;
+
+use harden::Locked;
+use std::fmt::Display;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Write};
+use std::os::fd::AsFd;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use veil_core::{
+    AuthFailures, Entropy, Error, HashKeys, KeycardView, MAX_FILE, MAX_SHARES, Secret, SetId,
+    ShareView, check_params, keycard_len, mask_len, share_len,
+};
+
+const USAGE: &str = "\
+usage:
+  veil split <file> [-k <threshold>] [-n <shares>] [-o <dir>]
+  veil combine <share>... -o <file | ->
+  veil check <share>...
+  veil refresh <every share> [-o <dir>]
+  veil keycard <share>... [-o <dir>]
+  veil deal <every keycard> [-o <dir>]
+  veil apply <share> <mask> [-o <dir>]
+
+split    writes n share files; any k of them rebuild the file, fewer reveal nothing
+combine  checks every share against every other, then rebuilds the file
+check    checks shares against each other without rebuilding anything
+refresh  moves a complete set to the next epoch without rebuilding the file;
+         shares from different epochs never combine
+
+refresh with the shares kept apart:
+  1. each vault  veil keycard <its share>        send the keycard to the dealer
+  2. dealer      veil deal <every keycard>       send each mask to its vault only
+  3. each vault  veil apply <its share> <mask>   then destroy the old share and mask
+
+defaults: -k 3 -n 5 -o .    largest file: 10240 bytes";
+
+enum Failure {
+    Usage(String),
+    Fatal(String),
+}
+
+type Result<T> = std::result::Result<T, Failure>;
+
+fn usage(msg: impl Display) -> Failure {
+    Failure::Usage(msg.to_string())
+}
+
+fn fatal(msg: impl Display) -> Failure {
+    Failure::Fatal(msg.to_string())
+}
+
+fn main() -> ExitCode {
+    if let Err(e) = harden::process() {
+        eprintln!("veil: cannot harden process: {e}");
+        return ExitCode::FAILURE;
+    }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let result = match args.first().map(String::as_str) {
+        Some("split") => split(&args[1..]),
+        Some("combine") => combine(&args[1..]),
+        Some("check") => check(&args[1..]),
+        Some("refresh") => refresh(&args[1..]),
+        Some("keycard") => keycard(&args[1..]),
+        Some("deal") => deal(&args[1..]),
+        Some("apply") => apply(&args[1..]),
+        Some("help" | "-h" | "--help") => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Some(other) => Err(usage(format!("unknown command '{other}'"))),
+        None => Err(usage("no command given")),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(Failure::Usage(msg)) => {
+            eprintln!("veil: {msg}\n\n{USAGE}");
+            ExitCode::from(2)
+        }
+        Err(Failure::Fatal(msg)) => {
+            eprintln!("veil: {msg}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The operating system's random generator. A stand-in for a hardware source: it is a seeded
+/// computational generator, so the information-theoretic guarantees hold only as far as its output
+/// is indistinguishable from true randomness.
+struct OsEntropy;
+
+impl Entropy for OsEntropy {
+    fn fill(&mut self, buf: &mut [u8]) -> std::result::Result<(), Error> {
+        getrandom::fill(buf).map_err(|_| Error::Entropy)
+    }
+}
+
+#[derive(Default)]
+struct Args {
+    positional: Vec<String>,
+    k: Option<u8>,
+    n: Option<u8>,
+    out: Option<String>,
+}
+
+fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
+    let mut parsed = Args::default();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let flag = arg.as_str();
+        if !flags.contains(&flag) {
+            if flag.starts_with('-') && flag != "-" {
+                return Err(usage(format!("unknown option '{flag}'")));
+            }
+            parsed.positional.push(arg.clone());
+            continue;
+        }
+        let value = iter
+            .next()
+            .ok_or_else(|| usage(format!("{flag} needs a value")))?;
+        let number = || {
+            value
+                .parse::<u8>()
+                .map_err(|_| usage(format!("{flag} needs a number, got '{value}'")))
+        };
+        match flag {
+            "-k" => parsed.k = Some(number()?),
+            "-n" => parsed.n = Some(number()?),
+            _ => parsed.out = Some(value.clone()),
+        }
+    }
+    Ok(parsed)
+}
+
+fn split(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-k", "-n", "-o"])?;
+    let [path] = args.positional.as_slice() else {
+        return Err(usage("split takes exactly one file"));
+    };
+    let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
+    check_params(k, n).map_err(usage)?;
+    let dir = out_dir(&args);
+
+    let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
+    {
+        let mut buf =
+            Locked::new(vec![0u8; MAX_FILE + 1].into_boxed_slice()).map_err(cannot_lock)?;
+        let len = read_capped(path, &mut buf)?;
+        if len > MAX_FILE {
+            return Err(fatal(format!("{path}: {}", Error::FileTooLarge)));
+        }
+        secret.load(&buf[..len]).map_err(fatal)?;
+    }
+
+    let mut shares = (0..n)
+        .map(|_| Locked::new(vec![0u8; share_len(n)].into_boxed_slice()))
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(cannot_lock)?;
+    let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(|s| &mut s[..]).collect();
+    let set_id = veil_core::split(&secret, k, n, &mut OsEntropy, &mut refs).map_err(fatal)?;
+
+    for (i, share) in shares.iter().enumerate() {
+        let file = dir.join(file_name(&set_id, 0, i as u8 + 1, n, "veil"));
+        write_new(&file, share)?;
+        println!("wrote {}", file.display());
+    }
+    println!("set id {}", hex(&set_id));
+    println!("record the set id somewhere separate from the shares.");
+    println!("any {k} of these {n} shares rebuild the file; fewer reveal nothing about it.");
+    println!("{path} itself was left untouched.");
+    Ok(())
+}
+
+fn combine(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let out = args
+        .out
+        .ok_or_else(|| usage("combine needs -o <file>, or -o - for stdout"))?;
+    let files = load(&args.positional, share_len(MAX_SHARES as u8))?;
+    let views = parse_views(&files)?;
+
+    let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
+    if let Err(e) = veil_core::combine(&views, &mut secret) {
+        if let Error::TamperDetected(failures) = &e {
+            report(&views, failures);
+        }
+        return Err(fatal(e));
+    }
+    let file = secret.file().map_err(fatal)?;
+    if out == "-" {
+        // Write straight to the descriptor so the plaintext never sits in a stdout buffer.
+        let mut stdout = File::from(io::stdout().as_fd().try_clone_to_owned().map_err(fatal)?);
+        stdout
+            .write_all(file)
+            .map_err(|e| fatal(format!("stdout: {e}")))?;
+    } else {
+        write_new(Path::new(&out), file)?;
+        eprintln!("wrote {out} ({} bytes)", file.len());
+    }
+    eprintln!("set id {}", hex(&views[0].set_id()));
+    eprintln!("check that it matches the set id recorded at split time.");
+    Ok(())
+}
+
+fn check(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &[])?;
+    let files = load(&args.positional, share_len(MAX_SHARES as u8))?;
+    let views = parse_views(&files)?;
+    for (file, view) in files.iter().zip(&views) {
+        println!(
+            "{}: share {} of {}, threshold {}, epoch {}, set id {}",
+            file.path,
+            view.index(),
+            view.total(),
+            view.threshold(),
+            view.epoch(),
+            hex(&view.set_id())
+        );
+    }
+    if views.len() < 2 {
+        println!("give at least 2 shares to cross-check them.");
+        return Ok(());
+    }
+    match veil_core::verify(&views) {
+        Ok(()) => {
+            println!(
+                "all {} cross-checks passed. nothing was rebuilt.",
+                views.len() * (views.len() - 1)
+            );
+            Ok(())
+        }
+        Err(e) => {
+            if let Error::TamperDetected(failures) = &e {
+                report(&views, failures);
+            }
+            Err(fatal(e))
+        }
+    }
+}
+
+fn refresh(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let dir = out_dir(&args);
+    let mut files = load(&args.positional, share_len(MAX_SHARES as u8))?;
+    let (keys, indices) = {
+        let views = parse_views(&files)?;
+        let keys = HashKeys::collect(&views).map_err(|e| {
+            if let Error::TamperDetected(failures) = &e {
+                report(&views, failures);
+            }
+            fatal(e)
+        })?;
+        (keys, views.iter().map(ShareView::index).collect::<Vec<_>>())
+    };
+
+    let mut masks = (0..files.len())
+        .map(|_| Locked::new(vec![0u8; mask_len(files.len() as u8)].into_boxed_slice()))
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(cannot_lock)?;
+    let mut refs: Vec<&mut [u8]> = masks.iter_mut().map(|m| &mut m[..]).collect();
+    veil_core::deal(&keys, &mut OsEntropy, &mut refs).map_err(fatal)?;
+    for (file, &x) in files.iter_mut().zip(&indices) {
+        veil_core::apply(file.bytes_mut(), &masks[x as usize - 1]).map_err(fatal)?;
+    }
+    drop(masks);
+
+    // The new set must pass every cross-check before anything is written.
+    let views = parse_views(&files)?;
+    veil_core::verify(&views).map_err(|e| {
+        fatal(format!(
+            "refreshed shares failed verification, nothing written: {e}"
+        ))
+    })?;
+    let (epoch, total, k) = (views[0].epoch(), views[0].total(), views[0].threshold());
+    let mut order: Vec<usize> = (0..files.len()).collect();
+    order.sort_by_key(|&i| indices[i]);
+    for i in order {
+        let file = dir.join(file_name(
+            &views[i].set_id(),
+            epoch,
+            indices[i],
+            total,
+            "veil",
+        ));
+        write_new(&file, files[i].bytes())?;
+        println!("wrote {}", file.display());
+    }
+    println!("all {total} shares moved to epoch {epoch}. the file was never rebuilt.");
+    println!(
+        "now destroy every epoch {} share: until they are gone, any {k} of them still rebuild the file.",
+        epoch - 1
+    );
+    Ok(())
+}
+
+fn keycard(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let dir = out_dir(&args);
+    let files = load(&args.positional, share_len(MAX_SHARES as u8))?;
+    for view in parse_views(&files)? {
+        let mut card = Locked::new(vec![0u8; keycard_len(view.total())].into_boxed_slice())
+            .map_err(cannot_lock)?;
+        veil_core::keycard(&view, &mut card).map_err(fatal)?;
+        let (id, epoch, x, n) = (view.set_id(), view.epoch(), view.index(), view.total());
+        let file = dir.join(file_name(&id, epoch, x, n, "veilkey"));
+        write_new(&file, &card)?;
+        println!("wrote {}", file.display());
+    }
+    println!("send keycards only to the dealer, then destroy them.");
+    println!(
+        "they hold no share data, but a keycard plus another share is enough to forge that share's seal."
+    );
+    Ok(())
+}
+
+fn deal(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let dir = out_dir(&args);
+    let files = load(&args.positional, keycard_len(MAX_SHARES as u8))?;
+    let cards = files
+        .iter()
+        .map(|f| KeycardView::parse(f.bytes()).map_err(|e| fatal(format!("{}: {e}", f.path))))
+        .collect::<Result<Vec<_>>>()?;
+    let keys = HashKeys::from_keycards(&cards).map_err(fatal)?;
+    let (id, epoch, n) = (cards[0].set_id(), cards[0].epoch(), cards[0].total());
+
+    let mut masks = (0..n)
+        .map(|_| Locked::new(vec![0u8; mask_len(n)].into_boxed_slice()))
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(cannot_lock)?;
+    let mut refs: Vec<&mut [u8]> = masks.iter_mut().map(|m| &mut m[..]).collect();
+    veil_core::deal(&keys, &mut OsEntropy, &mut refs).map_err(fatal)?;
+    for (i, mask) in masks.iter().enumerate() {
+        let file = dir.join(file_name(&id, epoch, i as u8 + 1, n, "veilmask"));
+        write_new(&file, mask)?;
+        println!("wrote {}", file.display());
+    }
+    println!(
+        "send each mask only to the vault holding that share: a mask moves its share between epochs."
+    );
+    println!("destroy the keycards now, and each mask once it has been applied.");
+    Ok(())
+}
+
+fn apply(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let dir = out_dir(&args);
+    let [share_path, mask_path] = args.positional.as_slice() else {
+        return Err(usage("apply takes a share and its mask"));
+    };
+    let mut files = load(&args.positional, mask_len(MAX_SHARES as u8))?;
+    ShareView::parse(files[0].bytes()).map_err(|e| fatal(format!("{share_path}: {e}")))?;
+    let (share, mask) = files.split_at_mut(1);
+    veil_core::apply(share[0].bytes_mut(), mask[0].bytes())
+        .map_err(|e| fatal(format!("{mask_path}: {e}")))?;
+
+    let view = ShareView::parse(share[0].bytes()).map_err(fatal)?;
+    let (id, epoch, x, n) = (view.set_id(), view.epoch(), view.index(), view.total());
+    let file = dir.join(file_name(&id, epoch, x, n, "veil"));
+    write_new(&file, share[0].bytes())?;
+    println!("wrote {}", file.display());
+    println!("now destroy {share_path} and {mask_path}.");
+    if view.threshold() > 2 {
+        println!(
+            "to confirm it, cross-check it against one other vault's new share with veil check."
+        );
+    }
+    Ok(())
+}
+
+/// A file read into pinned memory.
+struct Loaded {
+    path: String,
+    buf: Locked<[u8]>,
+    len: usize,
+}
+
+impl Loaded {
+    fn bytes(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[..self.len]
+    }
+}
+
+/// Reads every file in `paths`, refusing any longer than `largest` bytes.
+fn load(paths: &[String], largest: usize) -> Result<Vec<Loaded>> {
+    if paths.is_empty() {
+        return Err(usage("no files given"));
+    }
+    paths
+        .iter()
+        .map(|path| {
+            let mut buf =
+                Locked::new(vec![0u8; largest + 1].into_boxed_slice()).map_err(cannot_lock)?;
+            let len = read_capped(path, &mut buf)?;
+            if len > largest {
+                return Err(fatal(format!("{path}: {}", Error::BadLength)));
+            }
+            Ok(Loaded {
+                path: path.clone(),
+                buf,
+                len,
+            })
+        })
+        .collect()
+}
+
+fn parse_views(files: &[Loaded]) -> Result<Vec<ShareView<'_>>> {
+    files
+        .iter()
+        .map(|f| ShareView::parse(f.bytes()).map_err(|e| fatal(format!("{}: {e}", f.path))))
+        .collect()
+}
+
+fn report(views: &[ShareView<'_>], failures: &AuthFailures) {
+    for view in views {
+        let rejections = failures.rejections(view.index());
+        if rejections > 0 {
+            eprintln!(
+                "  share {} was rejected by {rejections} of {} other shares",
+                view.index(),
+                views.len() - 1
+            );
+        }
+    }
+}
+
+/// Reads up to `buf.len()` bytes; a result equal to `buf.len()` means the file may be longer.
+fn read_capped(path: &str, buf: &mut [u8]) -> Result<usize> {
+    let mut file = File::open(path).map_err(|e| fatal(format!("{path}: {e}")))?;
+    let mut len = 0;
+    while len < buf.len() {
+        match file.read(&mut buf[len..]) {
+            Ok(0) => break,
+            Ok(read) => len += read,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(fatal(format!("{path}: {e}"))),
+        }
+    }
+    Ok(len)
+}
+
+/// Creates `path` readable only by its owner, refusing to overwrite anything, and syncs it to disk.
+fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
+    let context = |e: io::Error| fatal(format!("{}: {e}", path.display()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(context)?;
+    file.write_all(bytes).map_err(context)?;
+    file.sync_all().map_err(context)
+}
+
+/// File name for a share, keycard or mask: set id prefix, epoch, then which share of how many.
+fn file_name(set_id: &SetId, epoch: u32, x: u8, n: u8, extension: &str) -> String {
+    format!("veil-{}-e{epoch}-{x}of{n}.{extension}", hex(&set_id[..4]))
+}
+
+fn out_dir(args: &Args) -> PathBuf {
+    PathBuf::from(args.out.as_deref().unwrap_or("."))
+}
+
+fn cannot_lock(e: io::Error) -> Failure {
+    fatal(format!("cannot pin memory in RAM: {e}"))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}

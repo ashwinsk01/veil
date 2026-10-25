@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["veil-core", "veil-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[profile.release]
+overflow-checks = true
+lto = true
+codegen-units = 1
+panic = "abort"

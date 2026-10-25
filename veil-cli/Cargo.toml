@@ -1,0 +1,16 @@
+[package]
+name = "veil-cli"
+description = "The veil command: split a file into shares and recombine them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "veil"
+path = "src/main.rs"
+
+[dependencies]
+veil-core = { path = "../veil-core" }
+getrandom = "=0.4.3"
+libc = "=0.2.191"
+zeroize = "=1.9.1"
