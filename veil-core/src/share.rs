@@ -4,7 +4,7 @@ use crate::format::{
     Header, KEY_LEN, KEYS_OFFSET, MAGIC, SetId, ShareView, TAG_LEN, Y_OFFSET, body_len,
     check_params, share_len, slot,
 };
-use crate::{Entropy, Error, MAX_SHARES, SECRET_LEN, Secret, gf256, mac};
+use crate::{Entropy, Error, MAX_FILE, MAX_SHARES, SECRET_LEN, Secret, gf256, mac};
 use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -48,11 +48,101 @@ pub fn split<E: Entropy + ?Sized>(
     rng: &mut E,
     out: &mut [&mut [u8]],
 ) -> Result<SetId, Error> {
+    check_out(k, n, out)?;
+    for (b, &secret_byte) in secret.bytes().iter().enumerate() {
+        split_byte(out, b, secret_byte, k, rng)?;
+    }
+    seal(out, k, n, rng)
+}
+
+/// Splits a secret one byte at a time as it is typed, so that the whole never exists in one
+/// place. Each byte gets its own fresh curve the moment it arrives. The length and the padding are
+/// split at the end, and then the set is sealed. The shares are an ordinary set: [`combine`]
+/// rebuilds them.
+pub struct Writer<'a, 'b> {
+    k: u8,
+    n: u8,
+    out: &'a mut [&'b mut [u8]],
+    len: usize,
+}
+
+impl<'a, 'b> Writer<'a, 'b> {
+    /// `out` must hold `n` buffers of [`share_len`]`(n)` bytes each.
+    pub fn new(k: u8, n: u8, out: &'a mut [&'b mut [u8]]) -> Result<Self, Error> {
+        check_out(k, n, out)?;
+        Ok(Self { k, n, out, len: 0 })
+    }
+
+    /// Bytes written so far.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Splits the next byte at once. The caller should wipe its copy.
+    pub fn push<E: Entropy + ?Sized>(&mut self, byte: u8, rng: &mut E) -> Result<(), Error> {
+        if self.len == MAX_FILE {
+            return Err(Error::FileTooLarge);
+        }
+        split_byte(self.out, 2 + self.len, byte, self.k, rng)?;
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Takes back the last byte. Its position is split again by the next push or by the padding.
+    pub fn pop(&mut self) {
+        self.len = self.len.saturating_sub(1);
+    }
+
+    /// Splits the length and the padding, then seals the set.
+    pub fn finish<E: Entropy + ?Sized>(self, rng: &mut E) -> Result<SetId, Error> {
+        let length = (self.len as u16).to_be_bytes();
+        split_byte(self.out, 0, length[0], self.k, rng)?;
+        split_byte(self.out, 1, length[1], self.k, rng)?;
+        for b in 2 + self.len..SECRET_LEN {
+            split_byte(self.out, b, 0, self.k, rng)?;
+        }
+        seal(self.out, self.k, self.n, rng)
+    }
+}
+
+fn check_out(k: u8, n: u8, out: &[&mut [u8]]) -> Result<(), Error> {
     check_params(k, n)?;
     if out.len() != n as usize || out.iter().any(|share| share.len() != share_len(n)) {
         return Err(Error::BadLength);
     }
+    Ok(())
+}
 
+/// Puts one byte of the secret block on a fresh random polynomial of degree k - 1, with the byte as
+/// its constant term, and gives each share its point.
+fn split_byte<E: Entropy + ?Sized>(
+    out: &mut [&mut [u8]],
+    position: usize,
+    byte: u8,
+    k: u8,
+    rng: &mut E,
+) -> Result<(), Error> {
+    let mut coeffs = Zeroizing::new([0u8; MAX_SHARES - 1]);
+    let coeffs = &mut coeffs[..k as usize - 1];
+    rng.fill(coeffs)?;
+    for (i, share) in out.iter_mut().enumerate() {
+        share[Y_OFFSET + position] = eval(byte, coeffs, i as u8 + 1);
+    }
+    Ok(())
+}
+
+/// Writes every header, then every pairwise key, then every tag. Keys go in before any tag,
+/// because each tag covers its share's keys.
+fn seal<E: Entropy + ?Sized>(
+    out: &mut [&mut [u8]],
+    k: u8,
+    n: u8,
+    rng: &mut E,
+) -> Result<SetId, Error> {
     let mut set_id = [0; 16];
     rng.fill(&mut set_id)?;
     for (i, share) in out.iter_mut().enumerate() {
@@ -66,18 +156,6 @@ pub fn split<E: Entropy + ?Sized>(
         }
         .write(share, MAGIC);
     }
-
-    // One fresh random polynomial of degree k - 1 per byte, with the secret byte as its constant term.
-    let mut coeffs = Zeroizing::new([0u8; MAX_SHARES - 1]);
-    let coeffs = &mut coeffs[..k as usize - 1];
-    for (b, &secret_byte) in secret.bytes().iter().enumerate() {
-        rng.fill(coeffs)?;
-        for (i, share) in out.iter_mut().enumerate() {
-            share[Y_OFFSET + b] = eval(secret_byte, coeffs, i as u8 + 1);
-        }
-    }
-
-    // Every key goes in before any tag, because each tag covers its share's keys.
     for (i, share) in out.iter_mut().enumerate() {
         for j in (0..n as usize).filter(|&j| j != i) {
             let at = KEYS_OFFSET + slot(i as u8 + 1, j as u8 + 1) * KEY_LEN;
@@ -474,6 +552,64 @@ mod tests {
                 "k={k} n={n}"
             );
         }
+    }
+
+    fn written(k: u8, n: u8, actions: &[Option<u8>], seed: u64) -> Vec<Vec<u8>> {
+        let mut shares = vec![vec![0; share_len(n)]; n as usize];
+        let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(Vec::as_mut_slice).collect();
+        let mut rng = TestRng(seed);
+        let mut writer = Writer::new(k, n, &mut refs).unwrap();
+        for action in actions {
+            match action {
+                Some(byte) => writer.push(*byte, &mut rng).unwrap(),
+                None => writer.pop(),
+            }
+        }
+        writer.finish(&mut rng).unwrap();
+        shares
+    }
+
+    fn typed(text: &[u8]) -> Vec<Option<u8>> {
+        text.iter().map(|&b| Some(b)).collect()
+    }
+
+    #[test]
+    fn written_shares_rebuild_the_text() {
+        let text = b"recovery code: 7X4P-QM2D-9WKL";
+        for (k, n) in [(2, 3), (3, 5), (5, 5)] {
+            let shares = written(k, n, &typed(text), 50);
+            assert_eq!(verify(&views(&[&shares[0], &shares[1]])), Ok(()));
+            let picked: Vec<&[u8]> = shares
+                .iter()
+                .rev()
+                .take(k as usize)
+                .map(Vec::as_slice)
+                .collect();
+            assert_eq!(recover(&picked).unwrap(), text, "k={k} n={n}");
+        }
+    }
+
+    #[test]
+    fn taking_back_a_byte_rewrites_it() {
+        let mut actions = typed(b"helx");
+        actions.push(None);
+        actions.extend(typed(b"lo"));
+        let shares = written(3, 5, &actions, 51);
+        let picked: Vec<&[u8]> = shares[..3].iter().map(Vec::as_slice).collect();
+        assert_eq!(recover(&picked).unwrap(), b"hello");
+    }
+
+    #[test]
+    fn writer_stops_at_the_largest_file() {
+        let mut shares = vec![vec![0; share_len(3)]; 3];
+        let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(Vec::as_mut_slice).collect();
+        let mut rng = TestRng(52);
+        let mut writer = Writer::new(2, 3, &mut refs).unwrap();
+        for _ in 0..MAX_FILE {
+            writer.push(b'x', &mut rng).unwrap();
+        }
+        assert_eq!(writer.push(b'x', &mut rng), Err(Error::FileTooLarge));
+        assert_eq!(writer.len(), MAX_FILE);
     }
 
     #[test]

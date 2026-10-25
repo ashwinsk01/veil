@@ -73,6 +73,31 @@ watch whether recovery succeeds learns about the chip a little at a time. The ex
 reports decoding failures, but the final success or failure is still visible, so a device must keep
 its helper data inside its tamper boundary and limit failed attempts.
 
+## Writing a secret straight into Veil
+
+`write` lets you type a secret without it ever existing as a file. Each character is split the
+moment you choose it, so the text never exists whole: not in memory, not on disk, not on screen.
+
+```sh
+$B write -o shares/          # type through the keypad, then enter; combine brings it back
+```
+
+You type through a shuffled keypad. Every printable character sits in a fixed 10 × 10 grid, and the
+rows and columns are labelled with digits that **reshuffle after every character**. Find your
+character, press its row's digit, then its column's digit. Those digits are uniformly random
+whatever you typed, so someone who hears, logs or films your keys learns nothing, unless they also
+see the screen. Deleting and padding are cells in the grid too, so they look like any other
+character.
+
+What it can't hide:
+
+- **The length.** Anyone counting key presses learns how many characters you typed. Pad cells can
+  disguise it.
+- **Screen and keys together.** A camera that sees both, or malware on the same machine, can match
+  them up.
+- **Human-chosen text.** If you choose the words, they may be guessable wherever they're used. When
+  a secret doesn't have to be your own words, `forge` is stronger: there's nothing to type.
+
 ## Randomness
 
 Every guarantee rests on the random bytes being uniform. By default they come from the OS generator,
@@ -111,6 +136,7 @@ pipe or capture file. Never feed it the same capture twice.
 | Composed keys need shares and words together | For any key you pick, some set of words would open the same shares to it, so the shares say nothing about which key it is. Tested constructively |
 | The device factor survives noise | The Golay code's distance and its correction of every pattern of up to 3 errors are checked exhaustively. On simulated chips, the factor was rebuilt 200/200 times at the enrollment temperature and 197/200 at +20 °C, and never by another chip (0/90) |
 | A forged key is never computed | By construction: `forge` draws both parts at random and computes the check term by term, using POLYVAL's linearity. Recovery lands exactly on their XOR, which also proves the check right |
+| Typed secrets never exist whole | `write` splits each character the moment it's chosen. The keypad's digit labels are uniform shuffles (the random draw is checked exhaustively for bias), and a simulated user reading each shuffled screen types a secret that recombines exactly |
 | Field arithmetic is correct | All 65,536 products checked against an independent reference |
 | Secrets stay out of swap and crash dumps | Memory pinned with `mlock` and zeroed after use, core dumps disabled, debugger attachment blocked |
 | Randomness is uniform | With `--entropy` and a dice seed, no computational assumption remains: the output is within a stated distance of uniform. The extractor is checked exhaustively for the universal property the proof needs, and the health test cutoffs match NIST's published table |

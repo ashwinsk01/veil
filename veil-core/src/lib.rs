@@ -35,7 +35,7 @@ pub use format::{
     VERSION, check_params, keycard_len, mask_len, share_len,
 };
 pub use refresh::{HashKeys, apply, deal, keycard};
-pub use share::{AuthFailures, combine, split, verify};
+pub use share::{AuthFailures, Writer, combine, split, verify};
 
 /// Largest file Veil holds, in bytes.
 pub const MAX_FILE: usize = 10_240;

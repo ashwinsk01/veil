@@ -553,3 +553,16 @@ fn forge_can_skip_the_ripple() {
     let out = veil(&["forge", "secret.txt"]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn write_refuses_anything_but_a_keyboard() {
+    let out = veil(&["write"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("needs a keyboard"),
+        "{}",
+        stderr(&out)
+    );
+    let out = veil(&["write", "secret.txt"]);
+    assert_eq!(out.status.code(), Some(2));
+}

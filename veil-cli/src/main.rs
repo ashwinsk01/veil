@@ -1,6 +1,7 @@
 //! `veil`: split one small file into shares, check them, refresh them, and recombine them.
 
 mod harden;
+mod keypad;
 mod randomness;
 
 use harden::Locked;
@@ -14,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use veil_core::{
     AuthFailures, COMPOSED_KEY_LEN, Entropy, Error, FACTOR_LEN, HashKeys, KeycardView, MAX_FILE,
-    MAX_SHARES, Mix, PAYLOAD_LEN, Ripple, Secret, SetId, ShareView, WORD_COUNT, check_params,
-    keycard_len, mask_len, share_len,
+    MAX_SHARES, Mix, PAYLOAD_LEN, Ripple, Secret, SetId, ShareView, WORD_COUNT, Writer,
+    check_params, keycard_len, mask_len, share_len,
 };
 use zeroize::Zeroize;
 
@@ -32,6 +33,7 @@ usage:
   veil compose [-k <threshold>] [-n <shares>] [-o <dir>] [--key <file>] [randomness]
   veil forge [-k <threshold>] [-n <shares>] [-o <dir>] [--no-ripple] [randomness]
   veil recover <share>... -o <file | ->
+  veil write [-k <threshold>] [-n <shares>] [-o <dir>] [randomness]
 
 split    writes n share files; any k of them rebuild the file, fewer reveal nothing
 combine  checks every share against every other, then rebuilds the file
@@ -57,6 +59,8 @@ compose  protects a 32-byte key with shares AND 27 memorized words. the shares, 
 forge    like compose, but the key is born split: it is never computed until recover,
          and your keystrokes ripple into the randomness it is made from
 recover  rebuilds a composed key from enough shares plus your words
+write    type a secret straight into veil through a shuffled keypad. each character is
+         split the moment you choose it, so the text never exists whole anywhere
 
 defaults: -k 3 -n 5 -o .    largest file: 10240 bytes";
 
@@ -93,6 +97,7 @@ fn main() -> ExitCode {
         Some("compose") => compose(&args[1..]),
         Some("forge") => forge(&args[1..]),
         Some("recover") => recover(&args[1..]),
+        Some("write") => write(&args[1..]),
         Some("help" | "-h" | "--help") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -547,6 +552,60 @@ fn ripple_keystrokes(ripple: &mut Ripple) -> Result<()> {
     }
 }
 
+fn write(args: &[String]) -> Result<()> {
+    let args = parse_args(
+        args,
+        &["-k", "-n", "-o", "--entropy", "--min-entropy", "--seed"],
+    )?;
+    if !args.positional.is_empty() {
+        return Err(usage("write takes no file: you type the secret into veil"));
+    }
+    let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
+    check_params(k, n).map_err(usage)?;
+    let dir = out_dir(&args);
+    if !io::stdin().is_terminal() {
+        return Err(fatal(
+            "veil write needs a keyboard: it reads one key at a time, so the text never passes \
+             through a file or a pipe",
+        ));
+    }
+    let mut rng = randomness(&args)?;
+    let mut shares = share_buffers(n)?;
+    let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(|s| &mut s[..]).collect();
+    let mut writer = Writer::new(k, n, &mut refs).map_err(fatal)?;
+
+    let outcome = {
+        let Some(mut terminal) = harden::RawTerminal::enter().map_err(fatal)? else {
+            return Err(fatal("veil write needs a keyboard"));
+        };
+        let _screen = keypad::AltScreen::enter().map_err(fatal)?;
+        let color = std::env::var_os("NO_COLOR").is_none();
+        keypad::session(
+            &mut || terminal.key(),
+            &mut rng,
+            &mut writer,
+            &mut |pad, written, column_next| {
+                let mut err = io::stderr();
+                err.write_all(pad.render(written, k, n, column_next, color).as_bytes())?;
+                err.flush()
+            },
+        )
+    };
+    if outcome.map_err(fatal)? == keypad::Outcome::Cancelled {
+        return Err(fatal("cancelled; nothing was written"));
+    }
+    let written = writer.len();
+    if written == 0 {
+        return Err(fatal("nothing was typed, so nothing was written"));
+    }
+    let set_id = writer.finish(&mut rng).map_err(fatal)?;
+    save_shares(&shares, &set_id, n, &dir)?;
+    println!("{written} characters, split the moment each one was chosen. the text never existed");
+    println!("whole: not in memory, not on disk, not on screen. veil combine brings it back.");
+    println!("{}", rng.summary());
+    Ok(())
+}
+
 fn recover(args: &[String]) -> Result<()> {
     let args = parse_args(args, &["-o"])?;
     let out = args
@@ -574,20 +633,31 @@ fn recover(args: &[String]) -> Result<()> {
 
 /// Splits `secret` k-of-n into new share files in `dir` and returns the set id.
 fn write_split(secret: &Secret, k: u8, n: u8, rng: &mut Randomness, dir: &Path) -> Result<SetId> {
-    let mut shares = (0..n)
-        .map(|_| Locked::new(vec![0u8; share_len(n)].into_boxed_slice()))
-        .collect::<io::Result<Vec<_>>>()
-        .map_err(cannot_lock)?;
+    let mut shares = share_buffers(n)?;
     let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(|s| &mut s[..]).collect();
     let set_id = veil_core::split(secret, k, n, rng, &mut refs).map_err(fatal)?;
+    save_shares(&shares, &set_id, n, dir)?;
+    Ok(set_id)
+}
+
+/// Pinned, zeroed buffers for the shares of a split of `n`.
+fn share_buffers(n: u8) -> Result<Vec<Locked<[u8]>>> {
+    (0..n)
+        .map(|_| Locked::new(vec![0u8; share_len(n)].into_boxed_slice()))
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(cannot_lock)
+}
+
+/// Writes each share to its own new file in `dir` and prints the set id.
+fn save_shares(shares: &[Locked<[u8]>], set_id: &SetId, n: u8, dir: &Path) -> Result<()> {
     for (i, share) in shares.iter().enumerate() {
-        let file = dir.join(file_name(&set_id, 0, i as u8 + 1, n, "veil"));
+        let file = dir.join(file_name(set_id, 0, i as u8 + 1, n, "veil"));
         write_new(&file, share)?;
         println!("wrote {}", file.display());
     }
-    println!("set id {}", hex(&set_id));
+    println!("set id {}", hex(set_id));
     println!("record the set id somewhere separate from the shares.");
-    Ok(set_id)
+    Ok(())
 }
 
 /// Cross-verifies `views` and rebuilds what they hold, reporting any share that fails.
