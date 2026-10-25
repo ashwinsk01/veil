@@ -13,9 +13,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use veil_core::{
-    AuthFailures, Error, HashKeys, KeycardView, MAX_FILE, MAX_SHARES, Secret, SetId, ShareView,
-    check_params, keycard_len, mask_len, share_len,
+    AuthFailures, COMPOSED_KEY_LEN, Entropy, Error, FACTOR_LEN, HashKeys, KeycardView, MAX_FILE,
+    MAX_SHARES, PAYLOAD_LEN, Secret, SetId, ShareView, WORD_COUNT, check_params, keycard_len,
+    mask_len, share_len,
 };
+use zeroize::Zeroize;
 
 const USAGE: &str = "\
 usage:
@@ -27,6 +29,8 @@ usage:
   veil deal <every keycard> [-o <dir>] [randomness]
   veil apply <share> <mask> [-o <dir>]
   veil seed [-o <file>]
+  veil compose [-k <threshold>] [-n <shares>] [-o <dir>] [--key <file>] [randomness]
+  veil recover <share>... -o <file | ->
 
 split    writes n share files; any k of them rebuild the file, fewer reveal nothing
 combine  checks every share against every other, then rebuilds the file
@@ -47,6 +51,9 @@ randomness, for split, refresh and deal:
                               generator picks one
 seed     turns 272 rolls of a fair die, typed on stdin, into an extractor seed.
          the seed is public: it only has to come from real dice
+compose  protects a 32-byte key with shares AND 27 memorized words. the shares, even all
+         together, reveal nothing without the words. without --key, makes a new key
+recover  rebuilds a composed key from enough shares plus your words
 
 defaults: -k 3 -n 5 -o .    largest file: 10240 bytes";
 
@@ -80,6 +87,8 @@ fn main() -> ExitCode {
         Some("deal") => deal(&args[1..]),
         Some("apply") => apply(&args[1..]),
         Some("seed") => seed(&args[1..]),
+        Some("compose") => compose(&args[1..]),
+        Some("recover") => recover(&args[1..]),
         Some("help" | "-h" | "--help") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -109,6 +118,7 @@ struct Args {
     entropy: Option<String>,
     min_entropy: Option<String>,
     seed: Option<String>,
+    key: Option<String>,
 }
 
 fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
@@ -137,6 +147,7 @@ fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
             "--entropy" => parsed.entropy = Some(value.clone()),
             "--min-entropy" => parsed.min_entropy = Some(value.clone()),
             "--seed" => parsed.seed = Some(value.clone()),
+            "--key" => parsed.key = Some(value.clone()),
             _ => parsed.out = Some(value.clone()),
         }
     }
@@ -167,20 +178,7 @@ fn split(args: &[String]) -> Result<()> {
         secret.load(&buf[..len]).map_err(fatal)?;
     }
 
-    let mut shares = (0..n)
-        .map(|_| Locked::new(vec![0u8; share_len(n)].into_boxed_slice()))
-        .collect::<io::Result<Vec<_>>>()
-        .map_err(cannot_lock)?;
-    let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(|s| &mut s[..]).collect();
-    let set_id = veil_core::split(&secret, k, n, &mut rng, &mut refs).map_err(fatal)?;
-
-    for (i, share) in shares.iter().enumerate() {
-        let file = dir.join(file_name(&set_id, 0, i as u8 + 1, n, "veil"));
-        write_new(&file, share)?;
-        println!("wrote {}", file.display());
-    }
-    println!("set id {}", hex(&set_id));
-    println!("record the set id somewhere separate from the shares.");
+    write_split(&secret, k, n, &mut rng, &dir)?;
     println!("any {k} of these {n} shares rebuild the file; fewer reveal nothing about it.");
     println!("{path} itself was left untouched.");
     println!("{}", rng.summary());
@@ -194,25 +192,14 @@ fn combine(args: &[String]) -> Result<()> {
         .ok_or_else(|| usage("combine needs -o <file>, or -o - for stdout"))?;
     let files = load(&args.positional, share_len(MAX_SHARES as u8))?;
     let views = parse_views(&files)?;
-
-    let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
-    if let Err(e) = veil_core::combine(&views, &mut secret) {
-        if let Error::TamperDetected(failures) = &e {
-            report(&views, failures);
-        }
-        return Err(fatal(e));
-    }
+    let secret = rebuild(&views)?;
     let file = secret.file().map_err(fatal)?;
-    if out == "-" {
-        // Write straight to the descriptor so the plaintext never sits in a stdout buffer.
-        let mut stdout = File::from(io::stdout().as_fd().try_clone_to_owned().map_err(fatal)?);
-        stdout
-            .write_all(file)
-            .map_err(|e| fatal(format!("stdout: {e}")))?;
-    } else {
-        write_new(Path::new(&out), file)?;
-        eprintln!("wrote {out} ({} bytes)", file.len());
+    if veil_core::is_composed(file) {
+        return Err(fatal(
+            "these shares hold a composed key: use veil recover, which also asks for your words",
+        ));
     }
+    write_output(&out, file)?;
     eprintln!("set id {}", hex(&views[0].set_id()));
     eprintln!("check that it matches the set id recorded at split time.");
     Ok(())
@@ -407,6 +394,153 @@ fn seed(args: &[String]) -> Result<()> {
     println!("the seed is public: it can be printed, shared or reused. it only has to come from");
     println!("real dice, rolled without knowing anything about the noise source.");
     Ok(())
+}
+
+fn compose(args: &[String]) -> Result<()> {
+    let args = parse_args(
+        args,
+        &[
+            "-k",
+            "-n",
+            "-o",
+            "--key",
+            "--entropy",
+            "--min-entropy",
+            "--seed",
+        ],
+    )?;
+    if !args.positional.is_empty() {
+        return Err(usage(
+            "compose takes no file; use --key to protect an existing key",
+        ));
+    }
+    let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
+    check_params(k, n).map_err(usage)?;
+    let dir = out_dir(&args);
+    let mut rng = randomness(&args)?;
+
+    let mut key = Locked::new(Box::new([0u8; COMPOSED_KEY_LEN])).map_err(cannot_lock)?;
+    match args.key.as_deref() {
+        Some(path) => {
+            let mut buf = Locked::new(vec![0u8; COMPOSED_KEY_LEN + 1].into_boxed_slice())
+                .map_err(cannot_lock)?;
+            if read_capped(path, &mut buf)? != COMPOSED_KEY_LEN {
+                return Err(fatal(format!(
+                    "{path}: a key must be exactly {COMPOSED_KEY_LEN} bytes"
+                )));
+            }
+            key.copy_from_slice(&buf[..COMPOSED_KEY_LEN]);
+        }
+        None => rng.fill(&mut key[..]).map_err(fatal)?,
+    }
+    let mut payload = Locked::new(Box::new([0u8; PAYLOAD_LEN])).map_err(cannot_lock)?;
+    let mut words = Locked::new(Box::new([0u8; FACTOR_LEN])).map_err(cannot_lock)?;
+    veil_core::compose(&key, &mut rng, &mut payload, &mut words).map_err(fatal)?;
+
+    let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
+    secret.load(&payload[..]).map_err(fatal)?;
+    let set_id = write_split(&secret, k, n, &mut rng, &dir)?;
+    if args.key.is_none() {
+        let file = dir.join(format!("veil-{}-master.key", hex(&set_id[..4])));
+        write_new(&file, &key[..])?;
+        println!(
+            "wrote {}: the key itself. use it, then delete this copy.",
+            file.display()
+        );
+    }
+    println!();
+    println!("your {WORD_COUNT} words, the second factor:");
+    print_words(&words);
+    println!("without these words the shares are useless, to an attacker and to you. memorize");
+    println!(
+        "them, or write them down and keep them apart from every share. veil never stores them."
+    );
+    println!("{}", rng.summary());
+    Ok(())
+}
+
+fn recover(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let out = args
+        .out
+        .ok_or_else(|| usage("recover needs -o <file>, or -o - for stdout"))?;
+    let files = load(&args.positional, share_len(MAX_SHARES as u8))?;
+    let views = parse_views(&files)?;
+    let secret = rebuild(&views)?;
+    let payload = secret.file().map_err(fatal)?;
+    if !veil_core::is_composed(payload) {
+        return Err(fatal(
+            "these shares hold a plain file, not a composed key: use veil combine",
+        ));
+    }
+    eprintln!("type your {WORD_COUNT} words (they will not be shown), then press enter:");
+    let text = harden::read_secret().map_err(|e| fatal(format!("stdin: {e}")))?;
+    let factor = Locked::new(Box::new(veil_core::words_to_factor(&text).map_err(fatal)?))
+        .map_err(cannot_lock)?;
+    let mut key = Locked::new(Box::new([0u8; COMPOSED_KEY_LEN])).map_err(cannot_lock)?;
+    veil_core::recover(payload, &factor, &mut key).map_err(fatal)?;
+    write_output(&out, &key[..])?;
+    eprintln!("set id {}", hex(&views[0].set_id()));
+    Ok(())
+}
+
+/// Splits `secret` k-of-n into new share files in `dir` and returns the set id.
+fn write_split(secret: &Secret, k: u8, n: u8, rng: &mut Randomness, dir: &Path) -> Result<SetId> {
+    let mut shares = (0..n)
+        .map(|_| Locked::new(vec![0u8; share_len(n)].into_boxed_slice()))
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(cannot_lock)?;
+    let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(|s| &mut s[..]).collect();
+    let set_id = veil_core::split(secret, k, n, rng, &mut refs).map_err(fatal)?;
+    for (i, share) in shares.iter().enumerate() {
+        let file = dir.join(file_name(&set_id, 0, i as u8 + 1, n, "veil"));
+        write_new(&file, share)?;
+        println!("wrote {}", file.display());
+    }
+    println!("set id {}", hex(&set_id));
+    println!("record the set id somewhere separate from the shares.");
+    Ok(set_id)
+}
+
+/// Cross-verifies `views` and rebuilds what they hold, reporting any share that fails.
+fn rebuild(views: &[ShareView<'_>]) -> Result<Locked<Secret>> {
+    let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
+    veil_core::combine(views, &mut secret).map_err(|e| {
+        if let Error::TamperDetected(failures) = &e {
+            report(views, failures);
+        }
+        fatal(e)
+    })?;
+    Ok(secret)
+}
+
+/// Writes rebuilt plaintext to a new owner-only file, or to stdout for "-".
+fn write_output(out: &str, bytes: &[u8]) -> Result<()> {
+    if out == "-" {
+        // Write straight to the descriptor so the plaintext never sits in a stdout buffer.
+        let mut stdout = File::from(io::stdout().as_fd().try_clone_to_owned().map_err(fatal)?);
+        stdout
+            .write_all(bytes)
+            .map_err(|e| fatal(format!("stdout: {e}")))
+    } else {
+        write_new(Path::new(out), bytes)?;
+        eprintln!("wrote {out} ({} bytes)", bytes.len());
+        Ok(())
+    }
+}
+
+/// Prints a factor as numbered words, three per line.
+fn print_words(factor: &[u8; FACTOR_LEN]) {
+    let mut indices = veil_core::factor_to_words(factor);
+    for (row, chunk) in indices.chunks(3).enumerate() {
+        let line: Vec<String> = chunk
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| format!("{:>2} {:<9}", 3 * row + i + 1, veil_core::word(w)))
+            .collect();
+        println!("  {}", line.join("  "));
+    }
+    indices.zeroize();
 }
 
 /// Picks the randomness the flags ask for. A hardware source runs its start-up test here, before

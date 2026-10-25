@@ -67,3 +67,26 @@ impl<T: Zeroize + ?Sized> DerefMut for Locked<T> {
         &mut self.value
     }
 }
+
+/// Reads a secret from stdin. From a terminal, echo is off and one line is read; from a pipe,
+/// everything up to the end is read.
+pub fn read_secret() -> io::Result<zeroize::Zeroizing<String>> {
+    use std::io::{BufRead, Read};
+    let mut text = zeroize::Zeroizing::new(String::with_capacity(1024));
+    // SAFETY: termios is plain data; tcgetattr only writes the struct it is given.
+    let mut saved: libc::termios = unsafe { std::mem::zeroed() };
+    let terminal = unsafe { libc::tcgetattr(libc::STDIN_FILENO, &mut saved) } == 0;
+    if !terminal {
+        io::stdin().read_to_string(&mut text)?;
+        return Ok(text);
+    }
+    let mut quiet = saved;
+    quiet.c_lflag &= !libc::ECHO;
+    // SAFETY: tcsetattr only reads the struct it is given.
+    check(unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &quiet) })?;
+    let result = io::stdin().lock().read_line(&mut text);
+    // SAFETY: as above, restoring the settings saved before.
+    unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &saved) };
+    eprintln!();
+    result.map(|_| text)
+}

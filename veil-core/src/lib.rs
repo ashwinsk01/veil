@@ -9,6 +9,7 @@
 #[cfg(test)]
 extern crate std;
 
+mod compose;
 mod entropy;
 mod extract;
 mod format;
@@ -20,6 +21,10 @@ mod share;
 use core::fmt;
 use zeroize::Zeroize;
 
+pub use compose::{
+    COMPOSE_MAGIC, COMPOSED_KEY_LEN, FACTOR_LEN, PAYLOAD_LEN, WORD_COUNT, compose, factor_to_words,
+    is_composed, recover, word, words_to_factor,
+};
 pub use entropy::{APT_WINDOW, Conditioned, HealthTests, Mix, RawSource, STARTUP_SAMPLES};
 pub use extract::{DICE_ROLLS, MAX_OUTPUT, RAW_BLOCK, SEED_LEN, Toeplitz, seed_from_dice};
 pub use format::{
@@ -62,6 +67,9 @@ pub enum Error {
     WrongMask,
     SourceTooWeak,
     HealthTestFailed,
+    BadWords,
+    FactorsDontCombine,
+    NotComposed,
 }
 
 impl fmt::Display for Error {
@@ -92,6 +100,12 @@ impl fmt::Display for Error {
                 f,
                 "hardware source failed its health tests: it is stuck or has lost its entropy"
             ),
+            Error::BadWords => write!(
+                f,
+                "the words are misspelled, missing, or not from the word list"
+            ),
+            Error::FactorsDontCombine => write!(f, "the shares and the words do not combine"),
+            Error::NotComposed => write!(f, "these shares do not hold a composed key"),
         }
     }
 }

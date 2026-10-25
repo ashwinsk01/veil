@@ -29,6 +29,27 @@ so you can confirm you recovered the right set.
 
 After a refresh, destroy the old shares. Until they're gone, any *k* of them still rebuild the file.
 
+## Composed keys: shares AND your words
+
+`compose` protects a 32-byte master key with two factors: the shares and 27 words that you keep
+yourself. Neither reveals anything alone. Even all 5 holders together learn nothing without your
+words, and your words alone learn nothing without 3 shares.
+
+```sh
+$B compose -o shares/                       # new random key, 5 shares, 27 words printed once
+$B compose --key my.key -o shares/          # or protect an existing 32-byte key
+$B recover shares/*-1of5.veil shares/*-3of5.veil shares/*-5of5.veil -o my.key   # asks for the words
+```
+
+- **One check, at the end.** A wrong word, a wrong share or a share from another set all fail the
+  same way: "the shares and the words do not combine". Nothing says which factor was wrong.
+- **Typos are caught first** by a checksum inside the words, which reveals nothing about the key.
+  Each word can be typed as just its first four letters. The list is BIP-39 English.
+- **Why 32 bytes:** for perfect secrecy, your words must hold as much randomness as the key they
+  protect, and 27 words is about what a person can keep. To protect something larger, encrypt it
+  with the master key.
+- **The cost:** there is exactly one way in. Lose the words and the key is gone for good.
+
 ## Randomness
 
 Every guarantee rests on the random bytes being uniform. By default they come from the OS generator,
@@ -64,6 +85,7 @@ pipe or capture file. Never feed it the same capture twice.
 | Altered shares are caught and named | Information-theoretic one-time POLYVAL tags between every pair of shares. Forgery chance below 2⁻¹¹⁸ per check |
 | Refresh never rebuilds the file | The masks are dealt from hash keys alone: `deal` never receives share data. Each share is then XORed with its own mask. Dealing from keycards gives byte-for-byte the same masks as dealing from the shares |
 | Old and new shares don't combine | Each refresh puts the shares on a fresh random curve. Checked exhaustively for one old plus one new share at *k* = 2 |
+| Composed keys need shares and words together | For any key you pick, some set of words would open the same shares to it, so the shares say nothing about which key it is. Tested constructively |
 | Field arithmetic is correct | All 65,536 products checked against an independent reference |
 | Secrets stay out of swap and crash dumps | Memory pinned with `mlock` and zeroed after use, core dumps disabled, debugger attachment blocked |
 | Randomness is uniform | With `--entropy` and a dice seed, no computational assumption remains: the output is within a stated distance of uniform. The extractor is checked exhaustively for the universal property the proof needs, and the health test cutoffs match NIST's published table |

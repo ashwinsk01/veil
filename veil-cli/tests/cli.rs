@@ -432,3 +432,81 @@ fn weak_source_and_misused_flags_are_refused() {
     let out = veil(&["split", &input, "--entropy", &raw]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// The 27 words `compose` prints, in order.
+fn printed_words(stdout: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(stdout);
+    text.lines()
+        .skip_while(|l| !l.starts_with("your 27 words"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  "))
+        .flat_map(|l| l.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
+        .filter(|t| t.chars().all(|c| c.is_ascii_lowercase()))
+        .collect()
+}
+
+#[test]
+fn composed_key_needs_shares_and_words() {
+    let dir = TempDir::new("compose");
+    let out = veil(&["compose", "-o", dir.0.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let words = printed_words(&out.stdout);
+    assert_eq!(words.len(), 27, "{words:?}");
+    let key = fs::read(&files_in(dir.0.to_str().unwrap(), ".key")[0]).unwrap();
+    assert_eq!(key.len(), 32);
+    let s = files_in(dir.0.to_str().unwrap(), ".veil");
+
+    let out = veil_with_stdin(
+        &["recover", &s[0], &s[2], &s[4], "-o", "-"],
+        &words.join(" "),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(out.stdout, key);
+
+    let other = TempDir::new("compose-other");
+    let out = veil(&["compose", "-o", other.0.to_str().unwrap()]);
+    let wrong = printed_words(&out.stdout).join(" ");
+    let out = veil_with_stdin(&["recover", &s[1], &s[2], &s[3], "-o", "-"], &wrong);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("do not combine"), "{}", stderr(&out));
+    assert!(out.stdout.is_empty());
+
+    let out = veil(&["combine", &s[0], &s[1], &s[2], "-o", "-"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("use veil recover"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(out.stdout.is_empty());
+}
+
+#[test]
+fn compose_protects_an_existing_key() {
+    let dir = TempDir::new("compose-key");
+    let key_path = dir.join("my.key");
+    let key: Vec<u8> = (0u8..32).map(|i| i.wrapping_mul(37) ^ 0xa5).collect();
+    fs::write(&key_path, &key).unwrap();
+    let shares = dir.join("shares");
+    fs::create_dir(&shares).unwrap();
+    let out = veil(&["compose", "--key", &key_path, "-o", &shares]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        files_in(&shares, ".key").is_empty(),
+        "an existing key is never written back out"
+    );
+
+    let s = files_in(&shares, ".veil");
+    let words = printed_words(&out.stdout).join(" ");
+    let out = veil_with_stdin(&["recover", &s[3], &s[4], &s[0], "-o", "-"], &words);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(out.stdout, key);
+
+    fs::write(&key_path, &key[..31]).unwrap();
+    let out = veil(&["compose", "--key", &key_path, "-o", &shares]);
+    assert!(
+        stderr(&out).contains("exactly 32 bytes"),
+        "{}",
+        stderr(&out)
+    );
+}
