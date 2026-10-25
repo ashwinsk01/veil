@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use veil_core::{
     AuthFailures, COMPOSED_KEY_LEN, Entropy, Error, FACTOR_LEN, HashKeys, KeycardView, MAX_FILE,
-    MAX_SHARES, Mix, PAYLOAD_LEN, Ripple, Secret, SetId, ShareView, WORD_COUNT, Writer,
-    check_params, keycard_len, mask_len, share_len,
+    MAX_SHARES, Mix, PAYLOAD_LEN, Ripple, Secret, SetId, ShareView, Spelling, Writer, check_params,
+    keycard_len, mask_len, share_len,
 };
 use zeroize::Zeroize;
 
@@ -30,8 +30,10 @@ usage:
   veil deal <every keycard> [-o <dir>] [randomness]
   veil apply <share> <mask> [-o <dir>]
   veil seed [-o <file>]
-  veil compose [-k <threshold>] [-n <shares>] [-o <dir>] [--key <file>] [randomness]
-  veil forge [-k <threshold>] [-n <shares>] [-o <dir>] [--no-ripple] [randomness]
+  veil compose [-k <threshold>] [-n <shares>] [-o <dir>] [--key <file>] [--polyglot]
+               [randomness]
+  veil forge [-k <threshold>] [-n <shares>] [-o <dir>] [--no-ripple] [--polyglot]
+             [randomness]
   veil recover <share>... -o <file | ->
   veil write [-k <threshold>] [-n <shares>] [-o <dir>] [randomness]
 
@@ -59,8 +61,9 @@ compose  protects a 32-byte key with shares AND 27 memorized words. the shares, 
 forge    like compose, but the key is born split: it is never computed until recover,
          and your keystrokes ripple into the randomness it is made from
          compose and forge show the words only on a screen; --words-off-screen lets
-         them go to a file or pipe
-recover  rebuilds a composed key from enough shares plus your words
+         them go to a file or pipe. --polyglot spells them in English, Tamil, Hindi
+         and Russian: 23 words instead of 27
+recover  rebuilds a composed key from enough shares plus your words, either spelling
 write    type a secret straight into veil through a shuffled keypad. each character is
          split the moment you choose it, so the text never exists whole anywhere
 
@@ -132,6 +135,7 @@ struct Args {
     key: Option<String>,
     no_ripple: bool,
     words_off_screen: bool,
+    polyglot: bool,
 }
 
 fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
@@ -152,6 +156,10 @@ fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
         }
         if flag == "--words-off-screen" {
             parsed.words_off_screen = true;
+            continue;
+        }
+        if flag == "--polyglot" {
+            parsed.polyglot = true;
             continue;
         }
         let value = iter
@@ -426,6 +434,7 @@ fn compose(args: &[String]) -> Result<()> {
             "-o",
             "--key",
             "--words-off-screen",
+            "--polyglot",
             "--entropy",
             "--min-entropy",
             "--seed",
@@ -472,8 +481,7 @@ fn compose(args: &[String]) -> Result<()> {
         );
     }
     println!();
-    println!("your {WORD_COUNT} words, the second factor:");
-    print_words(&words);
+    print_words(&words, &args);
     println!("without these words the shares are useless, to an attacker and to you. memorize");
     println!(
         "them, or write them down and keep them apart from every share. veil never stores them."
@@ -491,6 +499,7 @@ fn forge(args: &[String]) -> Result<()> {
             "-o",
             "--no-ripple",
             "--words-off-screen",
+            "--polyglot",
             "--entropy",
             "--min-entropy",
             "--seed",
@@ -521,8 +530,7 @@ fn forge(args: &[String]) -> Result<()> {
     secret.load(&payload[..]).map_err(fatal)?;
     write_split(&secret, k, n, &mut rng, &dir)?;
     println!();
-    println!("your {WORD_COUNT} words, the second factor:");
-    print_words(&words);
+    print_words(&words, &args);
     println!("without these words the shares are useless, to an attacker and to you. memorize");
     println!(
         "them, or write them down and keep them apart from every share. veil never stores them."
@@ -631,7 +639,7 @@ fn recover(args: &[String]) -> Result<()> {
             "these shares hold a plain file, not a composed key: use veil combine",
         ));
     }
-    eprintln!("type your {WORD_COUNT} words (they will not be shown), then press enter:");
+    eprintln!("type your words (they will not be shown), then press enter:");
     let text = harden::read_secret().map_err(|e| fatal(format!("stdin: {e}")))?;
     let factor = Locked::new(Box::new(veil_core::words_to_factor(&text).map_err(fatal)?))
         .map_err(cannot_lock)?;
@@ -710,18 +718,25 @@ fn words_to_screen(args: &Args) -> Result<()> {
     ))
 }
 
-/// Prints a factor as numbered words, three per line.
-fn print_words(factor: &[u8; FACTOR_LEN]) {
-    let mut indices = veil_core::factor_to_words(factor);
-    for (row, chunk) in indices.chunks(3).enumerate() {
+/// Prints a factor as numbered words in the spelling the flags ask for: English three per line,
+/// the four scripts one per line, since terminals draw Tamil and Hindi at no predictable width.
+fn print_words(factor: &[u8; FACTOR_LEN], args: &Args) {
+    let spelling = if args.polyglot {
+        Spelling::Polyglot
+    } else {
+        Spelling::English
+    };
+    let per_line = if args.polyglot { 1 } else { 3 };
+    println!("your {} words, the second factor:", spelling.word_count());
+    let phrase = veil_core::factor_to_words(factor, spelling);
+    for (row, chunk) in phrase.indices().chunks(per_line).enumerate() {
         let line: Vec<String> = chunk
             .iter()
             .enumerate()
-            .map(|(i, &w)| format!("{:>2} {:<9}", 3 * row + i + 1, veil_core::word(w)))
+            .map(|(i, &w)| format!("{:>2} {:<9}", per_line * row + i + 1, veil_core::word(w)))
             .collect();
         println!("  {}", line.join("  "));
     }
-    indices.zeroize();
 }
 
 /// Picks the randomness the flags ask for. A hardware source runs its start-up test here, before

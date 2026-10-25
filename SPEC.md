@@ -83,7 +83,7 @@ The masks come out the same.
 
 ## Composed keys
 
-A composed key *K* (32 bytes) opens only with the shares and 27 words, plus a device if one was
+A composed key *K* (32 bytes) opens only with the shares and its words, plus a device if one was
 enrolled. Draw a 4-byte pad *p*, a 16-byte hash key *h* and the words' factor *X*w (36 bytes). A
 device's factor *X*d comes from the fuzzy extractor below. With *C* = *K* ‖ *p*, the shares carry
 this 62-byte payload as their file:
@@ -97,8 +97,32 @@ this 62-byte payload as their file:
 | 42 | 16 | *h* |
 | 58 | 4 | check: the first 4 bytes of MAC(*h* ‖ *p* ‖ 0¹², *K*) |
 
-**Words.** *X*w's 288 bits, most significant first, then the top 9 bits of its CRC-16/CCITT-FALSE,
-read as 27 indices of 11 bits each into the BIP-39 English word list.
+**Words.** *X*w's 288 bits, most significant first, then the top bits of its CRC-16/CCITT-FALSE,
+read as word indices, most significant bit first. A factor has two spellings:
+
+| Spelling | Words | Bits per word | Checksum bits | Indices |
+|---|---|---|---|---|
+| English | 27 | 11 | 9 | the BIP-39 English list |
+| Polyglot | 23 | 13 | 11 | 0–2,047 English, 2,048–4,095 Tamil, 4,096–6,143 Hindi, 6,144–8,191 Russian |
+
+The lists are in `veil-core/src/words/`, one word per line in index order; the English one is
+BIP-39's. Recovery tells the spellings apart by the number of words, and in a polyglot phrase each
+word's first letter names its list: Latin, Tamil, Devanagari or Cyrillic. Within its list a typed
+word matches after folding both it and the list's words:
+
+- **English:** ASCII case is ignored.
+- **Tamil:** ள and ழ become ல, ற becomes ர, ண and ந become ன, and ொ ோ ௌ ஔ become their
+  canonical decompositions.
+- **Hindi:** the nukta (U+093C) is dropped, also from the letters that include one: U+0929,
+  U+0931, U+0934 and U+0958 to U+095F become न र ळ and क ख ग ज ड ढ फ य. ँ becomes ं, and
+  ी ू ई ऊ ष become ि ु इ उ श. Then ङ ञ ण न or म, followed by a virama and a consonant (क to ह),
+  become ं followed by that consonant.
+- **Russian:** capitals become lowercase, ё becomes е, и followed by U+0306 becomes й, and U+0308
+  is dropped.
+- U+200C and U+200D are dropped everywhere.
+
+No two words in a list fold alike. English and Russian words may also be typed as a prefix of at
+least four letters, which no two words share. Tamil and Hindi words are typed whole.
 
 **Recovery.** XOR the payload's *C* field with *X*w (and *X*d). Accept the first 32 bytes as *K* only
 if the check matches, compared in constant time. Every wrong factor fails the same way.

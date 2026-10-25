@@ -60,6 +60,16 @@ they can only add randomness.
 $B forge -o shares/          # type 64 keys; 5 shares and 27 words come out, the key does not
 ```
 
+If you read Tamil, Hindi and Russian as well as English, `--polyglot` spells the same 288 bits in
+23 words instead of 27, drawn from four lists of 2,048 words in four scripts:
+
+```sh
+$B forge --polyglot -o shares/   # 23 words, such as  пингвин  toast  முதுமை  लोहा  …
+```
+
+The words are fewer, not stronger: either spelling holds the same randomness. A word's script says
+which list it's from, and `recover` accepts both spellings.
+
 The forging machine still sees both parts for a moment, since your words have to be shown to you,
 so the key is computable there, just never computed. Making even that impossible needs the shares
 to be born on separate devices.
@@ -67,10 +77,13 @@ to be born on separate devices.
 - **One check, at the end.** A wrong word, a wrong share or a share from another set all fail the
   same way: "the shares and the words do not combine". Nothing says which factor was wrong.
 - **Typos are caught first** by a checksum inside the words, which reveals nothing about the key.
-  Each word can be typed as just its first four letters. The list is BIP-39 English.
+  English and Russian words can be typed as just their first four letters; Tamil and Hindi words
+  are typed whole. Letters people often confuse, such as ல ள ழ, ि ी or ё е, count as one, and no
+  list holds two words that differ only in them. English is the BIP-39 list; how the others were
+  built is in [experiments/wordlists](experiments/wordlists/README.md).
 - **Why 32 bytes:** for perfect secrecy, your words must hold as much randomness as the key they
-  protect, and 27 words is about what a person can keep. To protect something larger, encrypt it
-  with the master key.
+  protect, and 27 words (or 23 polyglot ones) is about what a person can keep. To protect
+  something larger, encrypt it with the master key.
 - **The cost:** there is exactly one way in. Lose the words and the key is gone for good.
 
 The core can also require a **device**: a third factor rebuilt from a chip's physical response by a
@@ -176,6 +189,8 @@ Everything below applies that rule to one step at a time.
   manager or a cloud note.
 - [ ] Words alone reveal nothing, so a second copy in another place is safe, as long as no copy ever
   sits alongside *k* shares. Losing every copy loses the key for good.
+- [ ] With `--polyglot`, set up Tamil, Hindi and Russian keyboards on the machine you'll recover
+  on, and practise typing there first: `recover` hides what you type.
 - [ ] Let the words print only to the terminal. Veil refuses to send them to a file or pipe unless
   you pass `--words-off-screen`, but the terminal itself keeps them: clear the scrollback afterwards
   (⌘K in macOS Terminal), and don't run inside a session recorder, `script` or a logging `tmux`.
@@ -224,6 +239,7 @@ Everything below applies that rule to one step at a time.
 | Old and new shares don't combine | Each refresh puts the shares on a fresh random curve. Checked exhaustively for one old plus one new share at *k* = 2 |
 | Composed keys need shares and words together | For any key you pick, some set of words would open the same shares to it, so the shares say nothing about which key it is. Tested constructively |
 | The device factor survives noise | The Golay code's distance and its correction of every pattern of up to 3 errors are checked exhaustively. On simulated chips, the factor was rebuilt 200/200 times at the enrollment temperature and 197/200 at +20 °C, and never by another chip (0/90) |
+| Words read back as written | Every one of the 8,192 words is found from its own spelling, and from a retyping with its confusable letters swapped. No two words in a list fold alike. Checked exhaustively |
 | A forged key is never computed | By construction: `forge` draws both parts at random and computes the check term by term, using POLYVAL's linearity. Recovery lands exactly on their XOR, which also proves the check right |
 | Typed secrets never exist whole | `write` splits each character the moment it's chosen. The keypad's digit labels are uniform shuffles (the random draw is checked exhaustively for bias), and a simulated user reading each shuffled screen types a secret that recombines exactly |
 | Field arithmetic is correct | All 65,536 products checked against an independent reference |
@@ -248,6 +264,9 @@ Everything below applies that rule to one step at a time.
 cargo run --release -p puf-sim               # when responses are unique and stable
 cargo run --release -p puf-sim --bin fuzzy   # the device factor end to end on simulated chips
 ```
+
+`experiments/wordlists` rebuilds the Tamil, Hindi and Russian word lists from public subtitle,
+Wikipedia and news word counts, and credits those sources.
 
 ## Not done yet
 

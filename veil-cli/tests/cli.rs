@@ -433,15 +433,15 @@ fn weak_source_and_misused_flags_are_refused() {
     assert_eq!(out.status.code(), Some(2));
 }
 
-/// The 27 words `compose` prints, in order.
+/// The words `compose` or `forge` prints, in order, without their numbers.
 fn printed_words(stdout: &[u8]) -> Vec<String> {
     let text = String::from_utf8_lossy(stdout);
     text.lines()
-        .skip_while(|l| !l.starts_with("your 27 words"))
+        .skip_while(|l| !(l.starts_with("your ") && l.contains(" words, ")))
         .skip(1)
         .take_while(|l| l.starts_with("  "))
         .flat_map(|l| l.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
-        .filter(|t| t.chars().all(|c| c.is_ascii_lowercase()))
+        .filter(|t| !t.chars().all(|c| c.is_ascii_digit()))
         .collect()
 }
 
@@ -489,6 +489,52 @@ fn composed_key_needs_shares_and_words() {
         stderr(&out)
     );
     assert!(out.stdout.is_empty());
+}
+
+#[test]
+fn polyglot_words_open_the_key_too() {
+    let dir = TempDir::new("polyglot");
+    let out = veil(&[
+        "compose",
+        "--words-off-screen",
+        "--polyglot",
+        "-o",
+        dir.0.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let words = printed_words(&out.stdout);
+    assert_eq!(words.len(), 23, "{words:?}");
+    assert!(
+        words.iter().any(|w| !w.is_ascii()),
+        "the four scripts show up: {words:?}"
+    );
+    let key = fs::read(&files_in(dir.0.to_str().unwrap(), ".key")[0]).unwrap();
+    let s = files_in(dir.0.to_str().unwrap(), ".veil");
+    let out = veil_with_stdin(
+        &["recover", &s[0], &s[1], &s[4], "-o", "-"],
+        &words.join(" "),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(out.stdout, key);
+
+    let dir = TempDir::new("polyglot-forge");
+    let out = veil(&[
+        "forge",
+        "--words-off-screen",
+        "--polyglot",
+        "-o",
+        dir.0.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let words = printed_words(&out.stdout);
+    assert_eq!(words.len(), 23, "{words:?}");
+    let s = files_in(dir.0.to_str().unwrap(), ".veil");
+    let out = veil_with_stdin(
+        &["recover", &s[2], &s[3], &s[4], "-o", "-"],
+        &words.join("\n"),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(out.stdout.len(), 32);
 }
 
 #[test]

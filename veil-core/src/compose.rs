@@ -5,10 +5,8 @@
 //! X_shares ⊕ X_words ⊕ X_device with a device factor from the fuzzy extractor. Each part is
 //! uniformly random on its own, so any factor missing leaves no information about the key. There is one check, at the very end: the first 4 bytes of
 //! POLYVAL_h(key) ⊕ pad, with h held in the shares and the pad inside C, so the check value reveals
-//! nothing either. Every wrong factor produces the same failure.
-//!
-//! The word list is the BIP-39 English list (CC0, via the rust-bip39 crate), chosen for
-//! memorability: every word is identified by its first four letters.
+//! nothing either. Every wrong factor produces the same failure. How the words spell their factor
+//! is in [`crate::words`].
 
 use crate::{Entropy, Error, mac};
 use subtle::ConstantTimeEq;
@@ -19,9 +17,6 @@ pub const COMPOSED_KEY_LEN: usize = 32;
 
 /// Length of each factor: the key plus the check pad.
 pub const FACTOR_LEN: usize = COMPOSED_KEY_LEN + CHECK_LEN;
-
-/// Words that encode a factor: 288 bits plus a 9-bit checksum, 11 bits per word.
-pub const WORD_COUNT: usize = 27;
 
 /// Length of the payload the shares hold.
 pub const PAYLOAD_LEN: usize = 62;
@@ -38,8 +33,6 @@ const FACTOR_DEVICE: u8 = 2;
 const SHARES_PART: core::ops::Range<usize> = 6..6 + FACTOR_LEN;
 const HASH_KEY: core::ops::Range<usize> = 42..42 + HASH_KEY_LEN;
 const CHECK: core::ops::Range<usize> = 58..58 + CHECK_LEN;
-
-static WORDLIST: &str = include_str!("words.txt");
 
 /// Splits `key` into a payload for the shares and a random factor for the words, filling both.
 /// With a device factor, such as one from [`crate::fuzzy::enroll`], the key needs that device too.
@@ -159,91 +152,11 @@ fn check(hash_key: &[u8; HASH_KEY_LEN], key: &[u8], pad: &[u8]) -> [u8; CHECK_LE
     [tag[0], tag[1], tag[2], tag[3]]
 }
 
-/// Encodes a factor as word-list indices: its bits most significant first, then the top 9 bits of
-/// its CRC-16, 11 bits per word.
-pub fn factor_to_words(factor: &[u8; FACTOR_LEN]) -> [u16; WORD_COUNT] {
-    let mut bits = Zeroizing::new([0u8; FACTOR_LEN + 2]);
-    bits[..FACTOR_LEN].copy_from_slice(factor);
-    bits[FACTOR_LEN..].copy_from_slice(&crc16(factor).to_be_bytes());
-    core::array::from_fn(|w| (0..11).fold(0u16, |acc, b| acc << 1 | bit(&bits[..], 11 * w + b)))
-}
-
-/// The word at `index` in the list.
-pub fn word(index: u16) -> &'static str {
-    WORDLIST.lines().nth(index as usize).unwrap_or_default()
-}
-
-/// Decodes typed words back into a factor. Case is ignored, and each word may be shortened to its
-/// first four letters. Typos are caught by the checksum, which says nothing about the key.
-pub fn words_to_factor(text: &str) -> Result<[u8; FACTOR_LEN], Error> {
-    let mut indices = [0u16; WORD_COUNT];
-    let mut count = 0;
-    for token in text.split_whitespace() {
-        if count == WORD_COUNT {
-            return Err(Error::BadWords);
-        }
-        indices[count] = lookup(token).ok_or(Error::BadWords)?;
-        count += 1;
-    }
-    if count != WORD_COUNT {
-        return Err(Error::BadWords);
-    }
-    let mut bits = Zeroizing::new([0u8; FACTOR_LEN + 2]);
-    for (w, &index) in indices.iter().enumerate() {
-        for b in 0..11 {
-            let at = 11 * w + b;
-            bits[at / 8] |= ((index >> (10 - b) & 1) as u8) << (7 - at % 8);
-        }
-    }
-    let mut factor = [0u8; FACTOR_LEN];
-    factor.copy_from_slice(&bits[..FACTOR_LEN]);
-    let checksum = u16::from_be_bytes([bits[FACTOR_LEN], bits[FACTOR_LEN + 1]]);
-    if checksum >> 7 != crc16(&factor) >> 7 {
-        return Err(Error::BadWords);
-    }
-    Ok(factor)
-}
-
-fn lookup(token: &str) -> Option<u16> {
-    let mut by_prefix = None;
-    for (i, candidate) in WORDLIST.lines().enumerate() {
-        if candidate.eq_ignore_ascii_case(token) {
-            return Some(i as u16);
-        }
-        let prefix_ok = token.len() >= 4
-            && candidate.len() > token.len()
-            && candidate.as_bytes()[..token.len()].eq_ignore_ascii_case(token.as_bytes());
-        if prefix_ok {
-            by_prefix = Some(i as u16);
-        }
-    }
-    by_prefix
-}
-
-fn bit(bytes: &[u8], at: usize) -> u16 {
-    (bytes[at / 8] >> (7 - at % 8) & 1) as u16
-}
-
-/// CRC-16/CCITT-FALSE. Only for catching typos.
-fn crc16(data: &[u8]) -> u16 {
-    let mut crc = 0xffffu16;
-    for &byte in data {
-        crc ^= (byte as u16) << 8;
-        for _ in 0..8 {
-            crc = if crc & 0x8000 != 0 {
-                crc << 1 ^ 0x1021
-            } else {
-                crc << 1
-            };
-        }
-    }
-    crc
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{format, string::String, vec::Vec};
+    use crate::{Spelling, factor_to_words, word, words_to_factor};
+    use std::{string::String, vec::Vec};
 
     struct TestRng(u64);
 
@@ -269,18 +182,21 @@ mod tests {
         (key, payload, words)
     }
 
-    fn typed(words: &[u8; FACTOR_LEN]) -> String {
-        let list = factor_to_words(words).map(word);
+    fn typed(words: &[u8; FACTOR_LEN], spelling: Spelling) -> String {
+        let phrase = factor_to_words(words, spelling);
+        let list: Vec<&str> = phrase.indices().iter().map(|&i| word(i)).collect();
         list.join(" ")
     }
 
     #[test]
     fn shares_and_words_together_rebuild_the_key() {
         let (key, payload, words) = composed(1);
-        let factor = words_to_factor(&typed(&words)).unwrap();
-        let mut out = [0u8; 32];
-        recover(&payload, &factor, None, &mut out).unwrap();
-        assert_eq!(out, key);
+        for spelling in [Spelling::English, Spelling::Polyglot] {
+            let factor = words_to_factor(&typed(&words, spelling)).unwrap();
+            let mut out = [0u8; 32];
+            recover(&payload, &factor, None, &mut out).unwrap();
+            assert_eq!(out, key);
+        }
     }
 
     /// Whatever the shares hold, every possible key fits them: for any key there are words that
@@ -326,68 +242,30 @@ mod tests {
         assert_eq!(out, [0u8; 32], "a failed recovery writes nothing");
     }
 
-    #[test]
-    fn words_round_trip() {
-        for seed in 0..50 {
-            let (_, _, words) = composed(100 + seed);
-            assert_eq!(words_to_factor(&typed(&words)).unwrap(), words);
-        }
-    }
-
-    #[test]
-    fn short_and_uppercase_words_are_accepted() {
-        let (_, _, words) = composed(5);
-        let shortened: Vec<String> = factor_to_words(&words)
-            .map(word)
-            .iter()
-            .map(|w| w.get(..4).unwrap_or(w).to_uppercase())
-            .collect();
-        assert_eq!(words_to_factor(&shortened.join("  ")).unwrap(), words);
-    }
-
     /// Swapping any one word for a different valid word must never open the key: the checksum
     /// usually catches it, and the joint check catches the rest.
     #[test]
     fn a_single_wrong_word_never_opens_the_key() {
         let (_, payload, words) = composed(6);
-        let indices = factor_to_words(&words);
-        let mut caught_by_checksum = 0;
-        for position in 0..WORD_COUNT {
-            for replacement in [7u16, 500, 1999] {
-                let mut swapped = indices;
-                swapped[position] = (indices[position] + replacement) % 2048;
-                let text = swapped.map(word).join(" ");
-                match words_to_factor(&text) {
-                    Err(Error::BadWords) => caught_by_checksum += 1,
-                    Ok(factor) => {
-                        let mut out = [0u8; 32];
-                        let result = recover(&payload, &factor, None, &mut out);
-                        assert_eq!(result, Err(Error::FactorsDontCombine));
+        for (spelling, modulus) in [(Spelling::English, 2048), (Spelling::Polyglot, 8192)] {
+            let indices: Vec<u16> = factor_to_words(&words, spelling).indices().to_vec();
+            for position in 0..indices.len() {
+                for replacement in [7u16, 500, 1999] {
+                    let mut swapped = indices.clone();
+                    swapped[position] = (indices[position] + replacement) % modulus;
+                    let text: Vec<&str> = swapped.iter().map(|&i| word(i)).collect();
+                    match words_to_factor(&text.join(" ")) {
+                        Err(Error::BadWords) => {}
+                        Ok(factor) => {
+                            let mut out = [0u8; 32];
+                            let result = recover(&payload, &factor, None, &mut out);
+                            assert_eq!(result, Err(Error::FactorsDontCombine));
+                        }
+                        Err(other) => panic!("unexpected {other:?}"),
                     }
-                    Err(other) => panic!("unexpected {other:?}"),
                 }
             }
         }
-        assert!(
-            caught_by_checksum >= 75,
-            "checksum caught only {caught_by_checksum} of 81"
-        );
-    }
-
-    #[test]
-    fn malformed_word_lists_are_refused() {
-        let (_, _, words) = composed(7);
-        let good = typed(&words);
-        let missing: Vec<&str> = good.split(' ').skip(1).collect();
-        assert_eq!(words_to_factor(&missing.join(" ")), Err(Error::BadWords));
-        assert_eq!(
-            words_to_factor(&format!("{good} abandon")),
-            Err(Error::BadWords)
-        );
-        assert_eq!(
-            words_to_factor(&good.replacen(' ', " notaword ", 1)),
-            Err(Error::BadWords)
-        );
     }
 
     #[test]
@@ -495,11 +373,6 @@ mod tests {
         assert_ne!(&quiet_payload[SHARES_PART], &typed_payload[SHARES_PART]);
         let mut out = [0u8; 32];
         recover(&typed_payload, &typed_words, None, &mut out).unwrap();
-    }
-
-    #[test]
-    fn crc16_check_value() {
-        assert_eq!(crc16(b"123456789"), 0x29b1);
     }
 
     #[test]

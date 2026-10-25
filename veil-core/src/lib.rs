@@ -18,13 +18,13 @@ mod gf256;
 mod mac;
 mod refresh;
 mod share;
+mod words;
 
 use core::fmt;
 use zeroize::Zeroize;
 
 pub use compose::{
-    COMPOSE_MAGIC, COMPOSED_KEY_LEN, FACTOR_LEN, PAYLOAD_LEN, WORD_COUNT, compose, factor_to_words,
-    forge, is_composed, recover, word, words_to_factor,
+    COMPOSE_MAGIC, COMPOSED_KEY_LEN, FACTOR_LEN, PAYLOAD_LEN, compose, forge, is_composed, recover,
 };
 pub use entropy::{
     APT_WINDOW, Conditioned, HealthTests, Mix, RIPPLE_LEN, RawSource, Ripple, STARTUP_SAMPLES,
@@ -36,6 +36,7 @@ pub use format::{
 };
 pub use refresh::{HashKeys, apply, deal, keycard};
 pub use share::{AuthFailures, Writer, combine, split, verify};
+pub use words::{Phrase, Spelling, factor_to_words, word, words_to_factor};
 
 /// Largest file Veil holds, in bytes.
 pub const MAX_FILE: usize = 10_240;
