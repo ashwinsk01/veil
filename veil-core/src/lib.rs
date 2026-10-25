@@ -9,6 +9,8 @@
 #[cfg(test)]
 extern crate std;
 
+mod entropy;
+mod extract;
 mod format;
 mod gf256;
 mod mac;
@@ -18,6 +20,8 @@ mod share;
 use core::fmt;
 use zeroize::Zeroize;
 
+pub use entropy::{APT_WINDOW, Conditioned, HealthTests, Mix, RawSource, STARTUP_SAMPLES};
+pub use extract::{DICE_ROLLS, MAX_OUTPUT, RAW_BLOCK, SEED_LEN, Toeplitz, seed_from_dice};
 pub use format::{
     HEADER_LEN, KEY_LEN, KEYCARD_MAGIC, KeycardView, MAGIC, MASK_MAGIC, SetId, ShareView, TAG_LEN,
     VERSION, check_params, keycard_len, mask_len, share_len,
@@ -56,6 +60,8 @@ pub enum Error {
     Entropy,
     EpochExhausted,
     WrongMask,
+    SourceTooWeak,
+    HealthTestFailed,
 }
 
 impl fmt::Display for Error {
@@ -78,9 +84,14 @@ impl fmt::Display for Error {
                 write!(f, "tamper detected: shares failed cross-verification")
             }
             Error::Corrupt => write!(f, "recovered block is malformed"),
-            Error::Entropy => write!(f, "random number source failed"),
+            Error::Entropy => write!(f, "random number source failed or ran out"),
             Error::EpochExhausted => write!(f, "epoch counter is exhausted"),
             Error::WrongMask => write!(f, "mask was not made for this share and epoch"),
+            Error::SourceTooWeak => write!(f, "source has too little min-entropy to extract from"),
+            Error::HealthTestFailed => write!(
+                f,
+                "hardware source failed its health tests: it is stuck or has lost its entropy"
+            ),
         }
     }
 }

@@ -278,3 +278,157 @@ fn apply_refuses_another_vaults_mask() {
     );
     assert!(files_in(&work, ".veil").is_empty());
 }
+
+fn veil_with_stdin(args: &[&str], input: &str) -> Output {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_veil"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+/// Simulated hardware noise: a fixed pseudorandom stream standing in for a device.
+fn noise(len: usize) -> Vec<u8> {
+    let mut state = 0x1234_5678_9abc_def0u64;
+    (0..len)
+        .map(|_| {
+            state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            (z ^ (z >> 31)) as u8
+        })
+        .collect()
+}
+
+fn dice() -> String {
+    (0..272)
+        .map(|i| char::from(b'1' + (i * 5 % 6) as u8))
+        .collect()
+}
+
+#[test]
+fn dice_seed_and_hardware_noise_drive_a_split() {
+    let dir = TempDir::new("hardware");
+    let seed = dir.join("seed.txt");
+    let out = veil_with_stdin(&["seed", "-o", &seed], &dice());
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(&seed).unwrap().trim().len(), 160);
+
+    let raw = dir.join("noise.bin");
+    fs::write(&raw, noise(200_000)).unwrap();
+    let input = dir.join("input");
+    fs::write(&input, b"real noise, real dice").unwrap();
+    let shares = dir.join("shares");
+    fs::create_dir(&shares).unwrap();
+    let out = veil(&[
+        "split",
+        &input,
+        "-o",
+        &shares,
+        "--entropy",
+        &raw,
+        "--min-entropy",
+        "7.5",
+        "--seed",
+        &seed,
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("hardware noise XOR the OS generator"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("the extractor seed came from dice"),
+        "{stdout}"
+    );
+
+    let s = files_in(&shares, ".veil");
+    let output = dir.join("out");
+    let out = veil(&["combine", &s[0], &s[2], &s[4], "-o", &output]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(fs::read(&output).unwrap(), b"real noise, real dice");
+}
+
+#[test]
+fn stuck_hardware_source_stops_the_split() {
+    let dir = TempDir::new("stuck");
+    let raw = dir.join("stuck.bin");
+    fs::write(&raw, vec![0x55u8; 200_000]).unwrap();
+    let input = dir.join("input");
+    fs::write(&input, b"x").unwrap();
+    let out = veil(&[
+        "split",
+        &input,
+        "-o",
+        &dir.join(""),
+        "--entropy",
+        &raw,
+        "--min-entropy",
+        "7",
+    ]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("failed its health tests"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(files_in(dir.0.to_str().unwrap(), ".veil").is_empty());
+}
+
+#[test]
+fn hardware_source_that_runs_dry_stops_the_split() {
+    let dir = TempDir::new("dry");
+    let raw = dir.join("short.bin");
+    fs::write(&raw, noise(20_000)).unwrap();
+    let input = dir.join("input");
+    fs::write(&input, b"x").unwrap();
+    let out = veil(&[
+        "split",
+        &input,
+        "-o",
+        &dir.join(""),
+        "--entropy",
+        &raw,
+        "--min-entropy",
+        "7",
+    ]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("failed or ran out"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(files_in(dir.0.to_str().unwrap(), ".veil").is_empty());
+}
+
+#[test]
+fn weak_source_and_misused_flags_are_refused() {
+    let dir = TempDir::new("flags");
+    let raw = dir.join("noise.bin");
+    fs::write(&raw, noise(10_000)).unwrap();
+    let input = dir.join("input");
+    fs::write(&input, b"x").unwrap();
+    let out = veil(&["split", &input, "--entropy", &raw, "--min-entropy", "2"]);
+    assert!(
+        stderr(&out).contains("too little min-entropy"),
+        "{}",
+        stderr(&out)
+    );
+    let out = veil(&["split", &input, "--seed", &raw]);
+    assert_eq!(out.status.code(), Some(2));
+    let out = veil(&["split", &input, "--entropy", &raw]);
+    assert_eq!(out.status.code(), Some(2));
+}

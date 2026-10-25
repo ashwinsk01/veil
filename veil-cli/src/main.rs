@@ -1,8 +1,10 @@
 //! `veil`: split one small file into shares, check them, refresh them, and recombine them.
 
 mod harden;
+mod randomness;
 
 use harden::Locked;
+use randomness::{OsEntropy, Randomness, read_seed, rolls_from_text};
 use std::fmt::Display;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -11,19 +13,20 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use veil_core::{
-    AuthFailures, Entropy, Error, HashKeys, KeycardView, MAX_FILE, MAX_SHARES, Secret, SetId,
-    ShareView, check_params, keycard_len, mask_len, share_len,
+    AuthFailures, Error, HashKeys, KeycardView, MAX_FILE, MAX_SHARES, Secret, SetId, ShareView,
+    check_params, keycard_len, mask_len, share_len,
 };
 
 const USAGE: &str = "\
 usage:
-  veil split <file> [-k <threshold>] [-n <shares>] [-o <dir>]
+  veil split <file> [-k <threshold>] [-n <shares>] [-o <dir>] [randomness]
   veil combine <share>... -o <file | ->
   veil check <share>...
-  veil refresh <every share> [-o <dir>]
+  veil refresh <every share> [-o <dir>] [randomness]
   veil keycard <share>... [-o <dir>]
-  veil deal <every keycard> [-o <dir>]
+  veil deal <every keycard> [-o <dir>] [randomness]
   veil apply <share> <mask> [-o <dir>]
+  veil seed [-o <file>]
 
 split    writes n share files; any k of them rebuild the file, fewer reveal nothing
 combine  checks every share against every other, then rebuilds the file
@@ -35,6 +38,15 @@ refresh with the shares kept apart:
   1. each vault  veil keycard <its share>        send the keycard to the dealer
   2. dealer      veil deal <every keycard>       send each mask to its vault only
   3. each vault  veil apply <its share> <mask>   then destroy the old share and mask
+
+randomness, for split, refresh and deal:
+  --entropy <device or file>  raw hardware noise: health-tested, extracted, then XORed
+                              with the OS generator. without it, the OS generator alone
+  --min-entropy <bits>        min-entropy per raw byte that the source is known to give
+  --seed <file>               extractor seed from veil seed. without it, the OS
+                              generator picks one
+seed     turns 272 rolls of a fair die, typed on stdin, into an extractor seed.
+         the seed is public: it only has to come from real dice
 
 defaults: -k 3 -n 5 -o .    largest file: 10240 bytes";
 
@@ -67,6 +79,7 @@ fn main() -> ExitCode {
         Some("keycard") => keycard(&args[1..]),
         Some("deal") => deal(&args[1..]),
         Some("apply") => apply(&args[1..]),
+        Some("seed") => seed(&args[1..]),
         Some("help" | "-h" | "--help") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -87,23 +100,15 @@ fn main() -> ExitCode {
     }
 }
 
-/// The operating system's random generator. A stand-in for a hardware source: it is a seeded
-/// computational generator, so the information-theoretic guarantees hold only as far as its output
-/// is indistinguishable from true randomness.
-struct OsEntropy;
-
-impl Entropy for OsEntropy {
-    fn fill(&mut self, buf: &mut [u8]) -> std::result::Result<(), Error> {
-        getrandom::fill(buf).map_err(|_| Error::Entropy)
-    }
-}
-
 #[derive(Default)]
 struct Args {
     positional: Vec<String>,
     k: Option<u8>,
     n: Option<u8>,
     out: Option<String>,
+    entropy: Option<String>,
+    min_entropy: Option<String>,
+    seed: Option<String>,
 }
 
 fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
@@ -129,6 +134,9 @@ fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
         match flag {
             "-k" => parsed.k = Some(number()?),
             "-n" => parsed.n = Some(number()?),
+            "--entropy" => parsed.entropy = Some(value.clone()),
+            "--min-entropy" => parsed.min_entropy = Some(value.clone()),
+            "--seed" => parsed.seed = Some(value.clone()),
             _ => parsed.out = Some(value.clone()),
         }
     }
@@ -136,13 +144,17 @@ fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
 }
 
 fn split(args: &[String]) -> Result<()> {
-    let args = parse_args(args, &["-k", "-n", "-o"])?;
+    let args = parse_args(
+        args,
+        &["-k", "-n", "-o", "--entropy", "--min-entropy", "--seed"],
+    )?;
     let [path] = args.positional.as_slice() else {
         return Err(usage("split takes exactly one file"));
     };
     let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
     check_params(k, n).map_err(usage)?;
     let dir = out_dir(&args);
+    let mut rng = randomness(&args)?;
 
     let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
     {
@@ -160,7 +172,7 @@ fn split(args: &[String]) -> Result<()> {
         .collect::<io::Result<Vec<_>>>()
         .map_err(cannot_lock)?;
     let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(|s| &mut s[..]).collect();
-    let set_id = veil_core::split(&secret, k, n, &mut OsEntropy, &mut refs).map_err(fatal)?;
+    let set_id = veil_core::split(&secret, k, n, &mut rng, &mut refs).map_err(fatal)?;
 
     for (i, share) in shares.iter().enumerate() {
         let file = dir.join(file_name(&set_id, 0, i as u8 + 1, n, "veil"));
@@ -171,6 +183,7 @@ fn split(args: &[String]) -> Result<()> {
     println!("record the set id somewhere separate from the shares.");
     println!("any {k} of these {n} shares rebuild the file; fewer reveal nothing about it.");
     println!("{path} itself was left untouched.");
+    println!("{}", rng.summary());
     Ok(())
 }
 
@@ -242,8 +255,9 @@ fn check(args: &[String]) -> Result<()> {
 }
 
 fn refresh(args: &[String]) -> Result<()> {
-    let args = parse_args(args, &["-o"])?;
+    let args = parse_args(args, &["-o", "--entropy", "--min-entropy", "--seed"])?;
     let dir = out_dir(&args);
+    let mut rng = randomness(&args)?;
     let mut files = load(&args.positional, share_len(MAX_SHARES as u8))?;
     let (keys, indices) = {
         let views = parse_views(&files)?;
@@ -261,7 +275,7 @@ fn refresh(args: &[String]) -> Result<()> {
         .collect::<io::Result<Vec<_>>>()
         .map_err(cannot_lock)?;
     let mut refs: Vec<&mut [u8]> = masks.iter_mut().map(|m| &mut m[..]).collect();
-    veil_core::deal(&keys, &mut OsEntropy, &mut refs).map_err(fatal)?;
+    veil_core::deal(&keys, &mut rng, &mut refs).map_err(fatal)?;
     for (file, &x) in files.iter_mut().zip(&indices) {
         veil_core::apply(file.bytes_mut(), &masks[x as usize - 1]).map_err(fatal)?;
     }
@@ -289,6 +303,7 @@ fn refresh(args: &[String]) -> Result<()> {
         println!("wrote {}", file.display());
     }
     println!("all {total} shares moved to epoch {epoch}. the file was never rebuilt.");
+    println!("{}", rng.summary());
     println!(
         "now destroy every epoch {} share: until they are gone, any {k} of them still rebuild the file.",
         epoch - 1
@@ -317,8 +332,9 @@ fn keycard(args: &[String]) -> Result<()> {
 }
 
 fn deal(args: &[String]) -> Result<()> {
-    let args = parse_args(args, &["-o"])?;
+    let args = parse_args(args, &["-o", "--entropy", "--min-entropy", "--seed"])?;
     let dir = out_dir(&args);
+    let mut rng = randomness(&args)?;
     let files = load(&args.positional, keycard_len(MAX_SHARES as u8))?;
     let cards = files
         .iter()
@@ -332,7 +348,7 @@ fn deal(args: &[String]) -> Result<()> {
         .collect::<io::Result<Vec<_>>>()
         .map_err(cannot_lock)?;
     let mut refs: Vec<&mut [u8]> = masks.iter_mut().map(|m| &mut m[..]).collect();
-    veil_core::deal(&keys, &mut OsEntropy, &mut refs).map_err(fatal)?;
+    veil_core::deal(&keys, &mut rng, &mut refs).map_err(fatal)?;
     for (i, mask) in masks.iter().enumerate() {
         let file = dir.join(file_name(&id, epoch, i as u8 + 1, n, "veilmask"));
         write_new(&file, mask)?;
@@ -342,6 +358,7 @@ fn deal(args: &[String]) -> Result<()> {
         "send each mask only to the vault holding that share: a mask moves its share between epochs."
     );
     println!("destroy the keycards now, and each mask once it has been applied.");
+    println!("{}", rng.summary());
     Ok(())
 }
 
@@ -369,6 +386,58 @@ fn apply(args: &[String]) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn seed(args: &[String]) -> Result<()> {
+    let args = parse_args(args, &["-o"])?;
+    let out = args.out.unwrap_or_else(|| "veil-seed.txt".to_owned());
+    eprintln!(
+        "roll a fair six-sided die {} times and type each result (1 to 6). spaces and \
+         newlines are ignored. finish with ctrl-d.",
+        veil_core::DICE_ROLLS
+    );
+    let mut text = String::new();
+    io::stdin()
+        .read_to_string(&mut text)
+        .map_err(|e| fatal(format!("stdin: {e}")))?;
+    let rolls = rolls_from_text(&text).map_err(fatal)?;
+    let seed = veil_core::seed_from_dice(&rolls).map_err(fatal)?;
+    write_new(Path::new(&out), format!("{}\n", hex(&seed)).as_bytes())?;
+    println!("wrote {out}");
+    println!("the seed is public: it can be printed, shared or reused. it only has to come from");
+    println!("real dice, rolled without knowing anything about the noise source.");
+    Ok(())
+}
+
+/// Picks the randomness the flags ask for. A hardware source runs its start-up test here, before
+/// any secret is touched.
+fn randomness(args: &Args) -> Result<Randomness> {
+    let Some(path) = args.entropy.as_deref() else {
+        if args.min_entropy.is_some() || args.seed.is_some() {
+            return Err(usage("--min-entropy and --seed only apply with --entropy"));
+        }
+        return Ok(Randomness::Os(OsEntropy));
+    };
+    let text = args
+        .min_entropy
+        .as_deref()
+        .ok_or_else(|| usage("--entropy needs --min-entropy <bits per byte>"))?;
+    let min_entropy = text
+        .parse::<f64>()
+        .ok()
+        .filter(|h| *h > 0.0 && *h <= 8.0)
+        .ok_or_else(|| {
+            usage(format!(
+                "--min-entropy needs a number from 0 to 8, got '{text}'"
+            ))
+        })?;
+    let seed = args
+        .seed
+        .as_deref()
+        .map(read_seed)
+        .transpose()
+        .map_err(fatal)?;
+    Randomness::hardware(path, min_entropy, seed).map_err(fatal)
 }
 
 /// A file read into pinned memory.
