@@ -1,0 +1,36 @@
+[package]
+name = "veil-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+veil-core = { path = "../veil-core" }
+
+# Its own workspace: fuzzing needs nightly Rust and libFuzzer, which the main build doesn't.
+[workspace]
+
+[[bin]]
+name = "bytes"
+path = "fuzz_targets/bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tamper"
+path = "fuzz_targets/tamper.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "words"
+path = "fuzz_targets/words.rs"
+test = false
+doc = false
+bench = false
