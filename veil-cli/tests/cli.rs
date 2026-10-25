@@ -448,7 +448,12 @@ fn printed_words(stdout: &[u8]) -> Vec<String> {
 #[test]
 fn composed_key_needs_shares_and_words() {
     let dir = TempDir::new("compose");
-    let out = veil(&["compose", "-o", dir.0.to_str().unwrap()]);
+    let out = veil(&[
+        "compose",
+        "--words-off-screen",
+        "-o",
+        dir.0.to_str().unwrap(),
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     let words = printed_words(&out.stdout);
     assert_eq!(words.len(), 27, "{words:?}");
@@ -464,7 +469,12 @@ fn composed_key_needs_shares_and_words() {
     assert_eq!(out.stdout, key);
 
     let other = TempDir::new("compose-other");
-    let out = veil(&["compose", "-o", other.0.to_str().unwrap()]);
+    let out = veil(&[
+        "compose",
+        "--words-off-screen",
+        "-o",
+        other.0.to_str().unwrap(),
+    ]);
     let wrong = printed_words(&out.stdout).join(" ");
     let out = veil_with_stdin(&["recover", &s[1], &s[2], &s[3], "-o", "-"], &wrong);
     assert!(!out.status.success());
@@ -489,7 +499,14 @@ fn compose_protects_an_existing_key() {
     fs::write(&key_path, &key).unwrap();
     let shares = dir.join("shares");
     fs::create_dir(&shares).unwrap();
-    let out = veil(&["compose", "--key", &key_path, "-o", &shares]);
+    let out = veil(&[
+        "compose",
+        "--words-off-screen",
+        "--key",
+        &key_path,
+        "-o",
+        &shares,
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(
         files_in(&shares, ".key").is_empty(),
@@ -503,7 +520,14 @@ fn compose_protects_an_existing_key() {
     assert_eq!(out.stdout, key);
 
     fs::write(&key_path, &key[..31]).unwrap();
-    let out = veil(&["compose", "--key", &key_path, "-o", &shares]);
+    let out = veil(&[
+        "compose",
+        "--words-off-screen",
+        "--key",
+        &key_path,
+        "-o",
+        &shares,
+    ]);
     assert!(
         stderr(&out).contains("exactly 32 bytes"),
         "{}",
@@ -514,7 +538,7 @@ fn compose_protects_an_existing_key() {
 #[test]
 fn forged_key_exists_only_once_recovered() {
     let dir = TempDir::new("forge");
-    let out = veil(&["forge", "-o", dir.0.to_str().unwrap()]);
+    let out = veil(&["forge", "--words-off-screen", "-o", dir.0.to_str().unwrap()]);
     assert!(out.status.success(), "{}", stderr(&out));
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("never computed"), "{stdout}");
@@ -547,7 +571,13 @@ fn forged_key_exists_only_once_recovered() {
 #[test]
 fn forge_can_skip_the_ripple() {
     let dir = TempDir::new("forge-quiet");
-    let out = veil(&["forge", "--no-ripple", "-o", dir.0.to_str().unwrap()]);
+    let out = veil(&[
+        "forge",
+        "--words-off-screen",
+        "--no-ripple",
+        "-o",
+        dir.0.to_str().unwrap(),
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(!String::from_utf8_lossy(&out.stdout).contains("no keyboard"));
     let out = veil(&["forge", "secret.txt"]);
@@ -565,4 +595,23 @@ fn write_refuses_anything_but_a_keyboard() {
     );
     let out = veil(&["write", "secret.txt"]);
     assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn words_never_land_in_a_file_unasked() {
+    let dir = TempDir::new("words-off-screen");
+    for command in ["compose", "forge"] {
+        let out = veil(&[command, "-o", dir.0.to_str().unwrap()]);
+        assert!(!out.status.success());
+        assert!(
+            stderr(&out).contains("--words-off-screen"),
+            "{}",
+            stderr(&out)
+        );
+        assert!(out.stdout.is_empty());
+    }
+    assert!(
+        files_in(dir.0.to_str().unwrap(), "").is_empty(),
+        "nothing is made when the words have nowhere safe to go"
+    );
 }

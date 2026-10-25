@@ -171,9 +171,9 @@ Everything below applies that rule to one step at a time.
   manager or a cloud note.
 - [ ] Words alone reveal nothing, so a second copy in another place is safe, as long as no copy ever
   sits alongside *k* shares. Losing every copy loses the key for good.
-- [ ] Let the words print to the terminal, never to a file or a pipe. They go to standard output,
-  so `veil forge > log.txt` would put them in a file. Clear the scrollback afterwards (⌘K in macOS
-  Terminal), and don't run inside a session recorder, `script` or a logging `tmux`.
+- [ ] Let the words print only to the terminal. Veil refuses to send them to a file or pipe unless
+  you pass `--words-off-screen`, but the terminal itself keeps them: clear the scrollback afterwards
+  (⌘K in macOS Terminal), and don't run inside a session recorder, `script` or a logging `tmux`.
 
 **Typing** (`write`)
 

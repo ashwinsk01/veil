@@ -58,6 +58,8 @@ compose  protects a 32-byte key with shares AND 27 memorized words. the shares, 
          together, reveal nothing without the words. without --key, makes a new key
 forge    like compose, but the key is born split: it is never computed until recover,
          and your keystrokes ripple into the randomness it is made from
+         compose and forge show the words only on a screen; --words-off-screen lets
+         them go to a file or pipe
 recover  rebuilds a composed key from enough shares plus your words
 write    type a secret straight into veil through a shuffled keypad. each character is
          split the moment you choose it, so the text never exists whole anywhere
@@ -129,6 +131,7 @@ struct Args {
     seed: Option<String>,
     key: Option<String>,
     no_ripple: bool,
+    words_off_screen: bool,
 }
 
 fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
@@ -145,6 +148,10 @@ fn parse_args(args: &[String], flags: &[&str]) -> Result<Args> {
         }
         if flag == "--no-ripple" {
             parsed.no_ripple = true;
+            continue;
+        }
+        if flag == "--words-off-screen" {
+            parsed.words_off_screen = true;
             continue;
         }
         let value = iter
@@ -418,6 +425,7 @@ fn compose(args: &[String]) -> Result<()> {
             "-n",
             "-o",
             "--key",
+            "--words-off-screen",
             "--entropy",
             "--min-entropy",
             "--seed",
@@ -430,6 +438,7 @@ fn compose(args: &[String]) -> Result<()> {
     }
     let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
     check_params(k, n).map_err(usage)?;
+    words_to_screen(&args)?;
     let dir = out_dir(&args);
     let mut rng = randomness(&args)?;
 
@@ -481,6 +490,7 @@ fn forge(args: &[String]) -> Result<()> {
             "-n",
             "-o",
             "--no-ripple",
+            "--words-off-screen",
             "--entropy",
             "--min-entropy",
             "--seed",
@@ -491,6 +501,7 @@ fn forge(args: &[String]) -> Result<()> {
     }
     let (k, n) = (args.k.unwrap_or(3), args.n.unwrap_or(5));
     check_params(k, n).map_err(usage)?;
+    words_to_screen(&args)?;
     let dir = out_dir(&args);
     let mut rng = randomness(&args)?;
 
@@ -685,6 +696,18 @@ fn write_output(out: &str, bytes: &[u8]) -> Result<()> {
         eprintln!("wrote {out} ({} bytes)", bytes.len());
         Ok(())
     }
+}
+
+/// Stops before anything is made if the words would land in a file or pipe rather than on a
+/// screen, unless --words-off-screen asks for exactly that.
+fn words_to_screen(args: &Args) -> Result<()> {
+    if args.words_off_screen || io::stdout().is_terminal() {
+        return Ok(());
+    }
+    Err(fatal(
+        "the words would go to a file or pipe instead of a screen, and stay there. \
+         run this at a terminal, or add --words-off-screen if that is what you want",
+    ))
 }
 
 /// Prints a factor as numbered words, three per line.
