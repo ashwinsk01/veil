@@ -435,7 +435,7 @@ fn compose(args: &[String]) -> Result<()> {
     }
     let mut payload = Locked::new(Box::new([0u8; PAYLOAD_LEN])).map_err(cannot_lock)?;
     let mut words = Locked::new(Box::new([0u8; FACTOR_LEN])).map_err(cannot_lock)?;
-    veil_core::compose(&key, &mut rng, &mut payload, &mut words).map_err(fatal)?;
+    veil_core::compose(&key, &mut rng, &mut payload, &mut words, None).map_err(fatal)?;
 
     let mut secret = Locked::new(Box::new(Secret::new())).map_err(cannot_lock)?;
     secret.load(&payload[..]).map_err(fatal)?;
@@ -478,7 +478,7 @@ fn recover(args: &[String]) -> Result<()> {
     let factor = Locked::new(Box::new(veil_core::words_to_factor(&text).map_err(fatal)?))
         .map_err(cannot_lock)?;
     let mut key = Locked::new(Box::new([0u8; COMPOSED_KEY_LEN])).map_err(cannot_lock)?;
-    veil_core::recover(payload, &factor, &mut key).map_err(fatal)?;
+    veil_core::recover(payload, &factor, None, &mut key).map_err(fatal)?;
     write_output(&out, &key[..])?;
     eprintln!("set id {}", hex(&views[0].set_id()));
     Ok(())

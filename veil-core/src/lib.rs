@@ -13,6 +13,7 @@ mod compose;
 mod entropy;
 mod extract;
 mod format;
+pub mod fuzzy;
 mod gf256;
 mod mac;
 mod refresh;
@@ -70,6 +71,7 @@ pub enum Error {
     BadWords,
     FactorsDontCombine,
     NotComposed,
+    DeviceRequired,
 }
 
 impl fmt::Display for Error {
@@ -106,6 +108,7 @@ impl fmt::Display for Error {
             ),
             Error::FactorsDontCombine => write!(f, "the shares and the words do not combine"),
             Error::NotComposed => write!(f, "these shares do not hold a composed key"),
+            Error::DeviceRequired => write!(f, "this key also needs its device"),
         }
     }
 }

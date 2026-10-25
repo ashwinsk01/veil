@@ -1,8 +1,9 @@
-//! Composition: a 32-byte key that opens only when the shares AND a memorized factor come together.
+//! Composition: a 32-byte key that opens only when the shares AND a memorized factor come together,
+//! and optionally a device too.
 //!
-//! The key and a 4-byte check pad form C (36 bytes), and C = X_shares ⊕ X_words. Each part is
-//! uniformly random on its own, so the shares (all of them together) or the words alone carry no
-//! information about the key. There is one check, at the very end: the first 4 bytes of
+//! The key and a 4-byte check pad form C (36 bytes), and C = X_shares ⊕ X_words, or
+//! X_shares ⊕ X_words ⊕ X_device with a device factor from the fuzzy extractor. Each part is
+//! uniformly random on its own, so any factor missing leaves no information about the key. There is one check, at the very end: the first 4 bytes of
 //! POLYVAL_h(key) ⊕ pad, with h held in the shares and the pad inside C, so the check value reveals
 //! nothing either. Every wrong factor produces the same failure.
 //!
@@ -30,8 +31,9 @@ pub const COMPOSE_MAGIC: [u8; 4] = *b"VCMP";
 const COMPOSE_VERSION: u8 = 1;
 const CHECK_LEN: usize = 4;
 const HASH_KEY_LEN: usize = 16;
-/// Factors the payload needs besides the shares. Bit 1 is reserved for a device (PUF) factor.
+/// Factors the payload needs besides the shares.
 const FACTOR_WORDS: u8 = 1;
+const FACTOR_DEVICE: u8 = 2;
 
 const SHARES_PART: core::ops::Range<usize> = 6..6 + FACTOR_LEN;
 const HASH_KEY: core::ops::Range<usize> = 42..42 + HASH_KEY_LEN;
@@ -39,12 +41,14 @@ const CHECK: core::ops::Range<usize> = 58..58 + CHECK_LEN;
 
 static WORDLIST: &str = include_str!("words.txt");
 
-/// Splits `key` into a payload for the shares and a factor for the words. Fills both.
+/// Splits `key` into a payload for the shares and a random factor for the words, filling both.
+/// With a device factor, such as one from [`crate::fuzzy::enroll`], the key needs that device too.
 pub fn compose<E: Entropy + ?Sized>(
     key: &[u8; COMPOSED_KEY_LEN],
     rng: &mut E,
     payload: &mut [u8; PAYLOAD_LEN],
     words: &mut [u8; FACTOR_LEN],
+    device: Option<&[u8; FACTOR_LEN]>,
 ) -> Result<(), Error> {
     let mut pad = Zeroizing::new([0u8; CHECK_LEN]);
     let mut hash_key = [0u8; HASH_KEY_LEN];
@@ -54,7 +58,7 @@ pub fn compose<E: Entropy + ?Sized>(
 
     payload[..4].copy_from_slice(&COMPOSE_MAGIC);
     payload[4] = COMPOSE_VERSION;
-    payload[5] = FACTOR_WORDS;
+    payload[5] = FACTOR_WORDS | if device.is_some() { FACTOR_DEVICE } else { 0 };
     let shares_part = &mut payload[SHARES_PART];
     for (i, byte) in shares_part.iter_mut().enumerate() {
         let c = if i < COMPOSED_KEY_LEN {
@@ -62,7 +66,7 @@ pub fn compose<E: Entropy + ?Sized>(
         } else {
             pad[i - COMPOSED_KEY_LEN]
         };
-        *byte = c ^ words[i];
+        *byte = c ^ words[i] ^ device.map_or(0, |d| d[i]);
     }
     payload[HASH_KEY].copy_from_slice(&hash_key);
     payload[CHECK].copy_from_slice(&check(&hash_key, key, &pad[..]));
@@ -74,21 +78,30 @@ pub fn is_composed(payload: &[u8]) -> bool {
     payload.len() == PAYLOAD_LEN && payload[..4] == COMPOSE_MAGIC
 }
 
-/// Rebuilds the key from the shares' payload and the words' factor, with one joint check.
+/// Rebuilds the key from the shares' payload, the words' factor and, if the composition has one,
+/// the device factor, with one joint check.
 pub fn recover(
     payload: &[u8],
     words: &[u8; FACTOR_LEN],
+    device: Option<&[u8; FACTOR_LEN]>,
     key: &mut [u8; COMPOSED_KEY_LEN],
 ) -> Result<(), Error> {
     if !is_composed(payload) {
         return Err(Error::NotComposed);
     }
-    if payload[4] != COMPOSE_VERSION || payload[5] != FACTOR_WORDS {
+    let flags = payload[5];
+    let known = flags & FACTOR_WORDS != 0 && flags & !(FACTOR_WORDS | FACTOR_DEVICE) == 0;
+    if payload[4] != COMPOSE_VERSION || !known {
         return Err(Error::UnsupportedVersion(payload[4]));
     }
+    match (flags & FACTOR_DEVICE != 0, device.is_some()) {
+        (true, false) => return Err(Error::DeviceRequired),
+        (false, true) => return Err(Error::BadParams),
+        _ => {}
+    }
     let mut c = Zeroizing::new([0u8; FACTOR_LEN]);
-    for ((c, s), w) in c.iter_mut().zip(&payload[SHARES_PART]).zip(words) {
-        *c = s ^ w;
+    for (i, c) in c.iter_mut().enumerate() {
+        *c = payload[SHARES_PART.start + i] ^ words[i] ^ device.map_or(0, |d| d[i]);
     }
     let (candidate, pad) = c.split_at(COMPOSED_KEY_LEN);
     let mut hash_key = [0u8; HASH_KEY_LEN];
@@ -215,7 +228,7 @@ mod tests {
         let mut key = [0u8; 32];
         rng.fill(&mut key).unwrap();
         let (mut payload, mut words) = ([0u8; PAYLOAD_LEN], [0u8; FACTOR_LEN]);
-        compose(&key, &mut rng, &mut payload, &mut words).unwrap();
+        compose(&key, &mut rng, &mut payload, &mut words, None).unwrap();
         (key, payload, words)
     }
 
@@ -229,7 +242,7 @@ mod tests {
         let (key, payload, words) = composed(1);
         let factor = words_to_factor(&typed(&words)).unwrap();
         let mut out = [0u8; 32];
-        recover(&payload, &factor, &mut out).unwrap();
+        recover(&payload, &factor, None, &mut out).unwrap();
         assert_eq!(out, key);
     }
 
@@ -255,7 +268,7 @@ mod tests {
                 forced[i] = payload[SHARES_PART][i] ^ c;
             }
             let mut out = [0u8; 32];
-            recover(&payload, &forced, &mut out).unwrap();
+            recover(&payload, &forced, None, &mut out).unwrap();
             assert_eq!(out, other);
         }
     }
@@ -266,11 +279,11 @@ mod tests {
         let (_, other_payload, other_words) = composed(4);
         let mut out = [0u8; 32];
         assert_eq!(
-            recover(&payload, &other_words, &mut out),
+            recover(&payload, &other_words, None, &mut out),
             Err(Error::FactorsDontCombine)
         );
         assert_eq!(
-            recover(&other_payload, &words, &mut out),
+            recover(&other_payload, &words, None, &mut out),
             Err(Error::FactorsDontCombine)
         );
         assert_eq!(out, [0u8; 32], "a failed recovery writes nothing");
@@ -311,7 +324,7 @@ mod tests {
                     Err(Error::BadWords) => caught_by_checksum += 1,
                     Ok(factor) => {
                         let mut out = [0u8; 32];
-                        let result = recover(&payload, &factor, &mut out);
+                        let result = recover(&payload, &factor, None, &mut out);
                         assert_eq!(result, Err(Error::FactorsDontCombine));
                     }
                     Err(other) => panic!("unexpected {other:?}"),
@@ -341,6 +354,36 @@ mod tests {
     }
 
     #[test]
+    fn device_factor_is_required_once_composed_with_one() {
+        let mut rng = TestRng(8);
+        let (mut key, mut device) = ([0u8; 32], [0u8; FACTOR_LEN]);
+        rng.fill(&mut key).unwrap();
+        rng.fill(&mut device).unwrap();
+        let (mut payload, mut words) = ([0u8; PAYLOAD_LEN], [0u8; FACTOR_LEN]);
+        compose(&key, &mut rng, &mut payload, &mut words, Some(&device)).unwrap();
+
+        let mut out = [0u8; 32];
+        recover(&payload, &words, Some(&device), &mut out).unwrap();
+        assert_eq!(out, key);
+        assert_eq!(
+            recover(&payload, &words, None, &mut out),
+            Err(Error::DeviceRequired)
+        );
+        let mut other_device = device;
+        other_device[0] ^= 1;
+        assert_eq!(
+            recover(&payload, &words, Some(&other_device), &mut out),
+            Err(Error::FactorsDontCombine),
+            "a wrong device fails exactly like a wrong word"
+        );
+        let (_, plain, plain_words) = composed(9);
+        assert_eq!(
+            recover(&plain, &plain_words, Some(&device), &mut out),
+            Err(Error::BadParams)
+        );
+    }
+
+    #[test]
     fn crc16_check_value() {
         assert_eq!(crc16(b"123456789"), 0x29b1);
     }
@@ -349,7 +392,7 @@ mod tests {
     fn plain_files_are_not_compositions() {
         let mut out = [0u8; 32];
         assert_eq!(
-            recover(b"just a file", &[0; FACTOR_LEN], &mut out),
+            recover(b"just a file", &[0; FACTOR_LEN], None, &mut out),
             Err(Error::NotComposed)
         );
     }

@@ -50,6 +50,15 @@ $B recover shares/*-1of5.veil shares/*-3of5.veil shares/*-5of5.veil -o my.key   
   with the master key.
 - **The cost:** there is exactly one way in. Lose the words and the key is gone for good.
 
+The core can also require a **device**: a third factor rebuilt from a chip's physical response by a
+fuzzy extractor (see [SPEC.md](SPEC.md)), so the key needs the shares AND the words AND that chip.
+It's ready in the library and waits on PUF hardware before the command line offers it.
+
+One known attack shapes how a device must use it: someone who can alter the helper data *and*
+watch whether recovery succeeds learns about the chip a little at a time. The extractor never
+reports decoding failures, but the final success or failure is still visible, so a device must keep
+its helper data inside its tamper boundary and limit failed attempts.
+
 ## Randomness
 
 Every guarantee rests on the random bytes being uniform. By default they come from the OS generator,
