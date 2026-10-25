@@ -88,6 +88,9 @@ dependencies = [
 [[package]]
 name = "puf-sim"
 version = "0.1.0"
+dependencies = [
+ "veil-core",
+]
 
 [[package]]
 name = "r-efi"

@@ -95,6 +95,7 @@ pipe or capture file. Never feed it the same capture twice.
 | Refresh never rebuilds the file | The masks are dealt from hash keys alone: `deal` never receives share data. Each share is then XORed with its own mask. Dealing from keycards gives byte-for-byte the same masks as dealing from the shares |
 | Old and new shares don't combine | Each refresh puts the shares on a fresh random curve. Checked exhaustively for one old plus one new share at *k* = 2 |
 | Composed keys need shares and words together | For any key you pick, some set of words would open the same shares to it, so the shares say nothing about which key it is. Tested constructively |
+| The device factor survives noise | The Golay code's distance and its correction of every pattern of up to 3 errors are checked exhaustively. On simulated chips, the factor was rebuilt 200/200 times at the enrollment temperature and 197/200 at +20 °C, and never by another chip (0/90) |
 | Field arithmetic is correct | All 65,536 products checked against an independent reference |
 | Secrets stay out of swap and crash dumps | Memory pinned with `mlock` and zeroed after use, core dumps disabled, debugger attachment blocked |
 | Randomness is uniform | With `--entropy` and a dice seed, no computational assumption remains: the output is within a stated distance of uniform. The extractor is checked exhaustively for the universal property the proof needs, and the health test cutoffs match NIST's published table |
@@ -108,6 +109,15 @@ pipe or capture file. Never feed it the same capture twice.
   bare-metal RISC-V
   (`cargo build -p veil-core --target riscv32imac-unknown-none-elf`).
 - `veil-cli/`: the `veil` command. All `unsafe` code is in `src/harden.rs`.
+
+## Experiments
+
+`experiments/puf-sim` models a chaotic PUF before hardware exists:
+
+```sh
+cargo run --release -p puf-sim               # when responses are unique and stable
+cargo run --release -p puf-sim --bin fuzzy   # the device factor end to end on simulated chips
+```
 
 ## Not done yet
 
