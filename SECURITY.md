@@ -28,11 +28,11 @@ Anything that lets someone:
 - change or forge a share without `combine`, `check` or `recover` noticing;
 - combine shares across a refresh, or rebuild a secret during one;
 - recover a composed key without every factor;
-- read a secret from memory, swap, crash dumps, the screen or the keys, in a way the README doesn't
+- read a secret from memory, swap, crash dumps, the screen or the keys, in a way the docs don't
   already describe.
 
-The README documents the known limits: the table in
+The known limits are documented: the table in
 [What is proven and what is assumed](README.md#what-is-proven-and-what-is-assumed) (the trusted
-dealer, permanent hash keys, a noise source's declared min-entropy) and what `write` can't hide.
-Confirming one of those is welcome but not new. A way around one that the README doesn't describe
-is.
+dealer, permanent hash keys, a noise source's declared min-entropy) and
+[What Veil can't hide](docs/safety.md#what-veil-cant-hide).
+Confirming one of those is welcome but not new. A way around one that the docs don't describe is.
